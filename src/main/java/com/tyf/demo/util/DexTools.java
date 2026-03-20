@@ -1,0 +1,75 @@
+package com.tyf.demo.util;
+
+
+import com.tyf.demo.entity.Device;
+import com.tyf.demo.service.ConstService;
+import com.tyf.demo.service.InitService;
+import org.pmw.tinylog.Logger;
+
+import java.io.*;
+import java.net.URISyntaxException;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Enumeration;
+import java.util.List;
+import java.util.function.Consumer;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
+import java.util.stream.Collectors;
+
+/**
+ *   @desc : dex 文件处理
+ *   @auth : tyf
+ *   @date : 2026-03-18 11:16:19
+*/
+public class DexTools {
+
+    // 查询所有开启 usb 调试的手机
+    public static List<Device> listDevices(){
+
+        String adb = ConstService.ADB_PATH + "adb.exe";
+        String cmd =  adb + " devices";
+
+        String rt = CmdTools.exec(cmd);
+        Logger.info(rt);
+
+        List<String> devices = null;
+        if(rt!=null){
+            String[] lines = rt.split("\n");
+            devices = Arrays.stream(lines).filter(n->!n.contains("List of devices attached")).collect(Collectors.toList());
+        }
+
+        // 多种设备
+        List<String> usbConnect = new ArrayList<>();// usb连接的设备
+        List<String> wifiConnect = new ArrayList<>();// wifi连接的设备
+        List<String> wifiDisConnect = new ArrayList<>();// wifi断开的设备
+
+        if(devices!=null&&!devices.isEmpty()){
+            wifiDisConnect = devices.stream().map(n-> n.replace("device","").trim()).filter(n->StringTools.isIpv4Port(n)&&n.contains("offline")).map(n->n.replace("offline","").replace("unauthorized","").trim()).collect(Collectors.toList());
+            wifiConnect = devices.stream().map(n-> n.replace("device","").trim()).filter(n->StringTools.isIpv4Port(n)&&!n.contains("offline")).map(n->n.replace("offline","").replace("unauthorized","").trim()).collect(Collectors.toList());
+            usbConnect = devices.stream().map(n-> n.replace("device","").trim()).filter(n->!StringTools.isIpv4Port(n)).map(n->n.replace("offline","").replace("unauthorized","").trim()).collect(Collectors.toList());
+        }
+
+//        System.out.println("------------------------------------------");
+//        System.out.println("USB Connect："+Arrays.toString(usbConnect.toArray()));
+//        System.out.println("WIFI online："+Arrays.toString(wifiConnect.toArray()));
+//        System.out.println("WIFI offline："+Arrays.toString(wifiDisConnect.toArray()));
+
+
+        List<Device> list = new ArrayList<>();
+        usbConnect.stream().forEach(n->{
+            list.add(new Device(n,"usb",""));
+        });
+        wifiConnect.stream().forEach(n->{
+            list.add(new Device(n,"wifi","on"));
+        });
+        wifiDisConnect.stream().forEach(n->{
+            list.add(new Device(n,"wifi","off"));
+        });
+
+        return list;
+    }
+
+
+}
