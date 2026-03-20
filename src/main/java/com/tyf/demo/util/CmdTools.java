@@ -39,7 +39,7 @@ public class CmdTools {
             // 等待命令执行完成
             process.waitFor();
         } catch (IOException | InterruptedException e) {
-            result.append("执行异常：").append(e.getMessage());
+            result.append("Exec error: ").append(e.getMessage());
             e.printStackTrace();
         } finally {
             if (process != null) {
@@ -109,7 +109,7 @@ public class CmdTools {
                         Logger.info("[Mobile] " + line);
                         // 如果进程输出退出关键字则主动关闭当前进程
                         if (exitKey != null && line.contains(exitKey)) {
-                            Logger.info("Process Get ExitCode："+exitKey);
+                            Logger.info("Process Get ExitCode: " + exitKey);
                             finalProcess.destroy();
                             break;
                         }
@@ -150,7 +150,7 @@ public class CmdTools {
                     Logger.info("[Mobile] " + line);
                     // 如果进程输出退出关键字则主动关闭当前进程
                     if (exitKey != null && line.contains(exitKey)) {
-                        Logger.info("Process Get ExitCode："+exitKey);
+                        Logger.info("Process Get ExitCode: " + exitKey);
                         finalProcess.destroy();
                         break;
                     }

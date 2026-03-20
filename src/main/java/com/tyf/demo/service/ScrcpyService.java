@@ -61,7 +61,7 @@ public final class ScrcpyService {
     */
     public static void start(Device device) throws Exception {
         if (!running.compareAndSet(false, true)) {
-            Logger.info("scrcpy 已在运行中，跳过启动");
+            Logger.info("scrcpy already running, skip");
             return;
         }
 
@@ -85,7 +85,7 @@ public final class ScrcpyService {
                     break;
                 } catch (Exception e) {
                     if (i == pushRetries - 1) throw e;
-                    Logger.info("adb push 失败，重试 " + (i + 1) + "/" + pushRetries);
+                    Logger.info("adb push failed, retry " + (i + 1) + "/" + pushRetries);
                     Thread.sleep(1000);
                 }
             }
@@ -126,7 +126,7 @@ public final class ScrcpyService {
                             "max_fps=" + ConstService.SCRCPY_MAX_FPS +
                             (ConstService.SCRCPY_MAX_SIZE > 0 ? " max_size=" + ConstService.SCRCPY_MAX_SIZE : "");
             String fullStartCmd = adbCmd(deviceId) + " " + startCmd;
-            Logger.info("启动 scrcpy-server 命令: " + fullStartCmd);
+            Logger.info("Start scrcpy-server cmd: " + fullStartCmd);
 
             // 后台启动 adb shell 进程（保持运行，接收 server 日志）
             Process shell = CmdTools.startBackgroundProcess(fullStartCmd);
@@ -298,7 +298,7 @@ public final class ScrcpyService {
                 s = null;
             }
             try {
-                Logger.info("scrcpy 视频连接尝试 " + attempt + "/" + maxAttempts + " -> 127.0.0.1:" + ConstService.SCRCPY_VIDEO_FORWARD_PORT);
+                Logger.info("scrcpy connect attempt " + attempt + "/" + maxAttempts + " -> 127.0.0.1:" + ConstService.SCRCPY_VIDEO_FORWARD_PORT);
                 s = new Socket();
                 s.connect(new InetSocketAddress("127.0.0.1", ConstService.SCRCPY_VIDEO_FORWARD_PORT), 5000);
                 s.setTcpNoDelay(true);  // 禁用 Nagle 算法，降低延迟
@@ -309,7 +309,7 @@ public final class ScrcpyService {
                 break;
             } catch (IOException e) {
                 lastFail = e;
-                Logger.info("scrcpy: 等待手机 accept / 读取视频头 (" + e.getMessage() + ")");
+                Logger.info("scrcpy: waiting for device accept/read header (" + e.getMessage() + ")");
                 Thread.sleep(retryGapMs);
             }
         }
@@ -330,13 +330,13 @@ public final class ScrcpyService {
                     s.close();
                 } catch (IOException ignore) {}
             }
-            throw new IOException("scrcpy: 在 " + maxAttempts + " 次尝试后仍无法读取视频头", lastFail);
+            throw new IOException("scrcpy: failed to read video header after " + maxAttempts + " attempts", lastFail);
         }
 
         // 步骤 2：获取视频分辨率
         final int vw = reader.getWidth();
         final int vh = reader.getHeight();
-        Logger.info("scrcpy: 视频分辨率 " + vw + "x" + vh + "（JavaCV/FFmpeg 进程内解码）");
+        Logger.info("scrcpy: video size " + vw + "x" + vh);
 
         // 步骤 3：视频解码主循环
         // 从 socket 读取 H.264 数据包 → 使用 FFmpeg 解码为原始图像 → 绘制到 UI
@@ -352,8 +352,8 @@ public final class ScrcpyService {
                     if (n <= 5 || n % 120 == 0) {
                         int b0 = (packed != null && len > 0) ? (packed[0] & 0xff) : -1;
                         int bLast = (packed != null && len > 1) ? (packed[len - 1] & 0xff) : -1;
-                        Logger.info("scrcpy: 解码成功 frame#" + n + " " + w + "x" + h
-                                + " bytes=" + len + (len == expect ? "" : " (预期 " + expect + ")")
+                        Logger.info("scrcpy: decode success frame#" + n + " " + w + "x" + h
+                                + " bytes=" + len + (len == expect ? "" : " (expected " + expect + ")")
                                 + " b[0]=" + b0 + " b[last]=" + bLast);
                     }
                     if (ConstService.SCRCPY_DRAW_DECODED_TO_UI && MainPanel.getContentPanel() != null) {
@@ -381,14 +381,14 @@ public final class ScrcpyService {
 
                             if (sample) {
                                 long dtMs = (System.nanoTime() - t0) / 1_000_000L;
-                                Logger.info("scrcpy: 解码 AU#" + accessUnits + " 耗时=" + dtMs + "ms");
+                                Logger.info("scrcpy: decode AU#" + accessUnits + " time=" + dtMs + "ms");
                             }
                         } catch (IOException e) {
                             // 流关闭或读取错误，正常退出循环
-                            Logger.info("scrcpy: 流关闭或读取错误 — " + e.getMessage());
+                            Logger.info("scrcpy: stream closed/EOF - " + e.getMessage());
                             break;
                         } catch (Throwable t) {
-                            Logger.error("scrcpy: 解码循环异常 — " + t);
+                            Logger.error("scrcpy: decode loop error - " + t);
                             t.printStackTrace();
                             break;
                         }
@@ -415,14 +415,14 @@ public final class ScrcpyService {
 
         // 文件已存在且不强制重写，直接返回
         if (out.exists() && !forceRewrite) {
-            Logger.info("scrcpy server jar 已存在: " + out.getAbsolutePath());
+            Logger.info("scrcpy server jar exists: " + out.getAbsolutePath());
             return out;
         }
 
         // 从 resources 读取并写入本地文件
         try (InputStream in = ScrcpyService.class.getResourceAsStream(ConstService.SCRCPY_SERVER_RESOURCE)) {
             if (in == null) {
-                throw new IllegalStateException("缺少资源文件: " + ConstService.SCRCPY_SERVER_RESOURCE);
+                throw new IllegalStateException("Missing resource file: " + ConstService.SCRCPY_SERVER_RESOURCE);
             }
             try (FileOutputStream fos = new FileOutputStream(out)) {
                 byte[] buf = new byte[8192];
@@ -432,7 +432,7 @@ public final class ScrcpyService {
                 }
             }
         }
-        Logger.info("scrcpy server jar 已提取: " + out.getAbsolutePath());
+        Logger.info("scrcpy server jar extracted: " + out.getAbsolutePath());
         return out;
     }
 

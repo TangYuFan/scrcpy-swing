@@ -28,7 +28,7 @@ public class InitService {
     */
     public static void initWorkSpace(){
         File wk = new File(ConstService.WORKSPACE);
-        System.out.println("工作目录地址："+wk.getAbsolutePath());
+        System.out.println("Workspace: " + wk.getAbsolutePath());
         if(!wk.exists()){
             wk.mkdirs();
         }
@@ -74,7 +74,7 @@ public class InitService {
             File adbDir = new File(adbPath);
 
             if (!adbDir.exists() && !adbDir.mkdirs()) {
-                Logger.error("无法创建 adb 目录: " + adbDir.getAbsolutePath());
+                Logger.error("Failed to create adb dir: " + adbDir.getAbsolutePath());
                 return;
             }
 
@@ -91,7 +91,7 @@ public class InitService {
                 }
                 try (InputStream in = InitService.class.getResourceAsStream("/adb/" + fileName)) {
                     if (in == null) {
-                        Logger.error("缺少文件：/adb/" + fileName);
+                        Logger.error("Missing resource: /adb/" + fileName);
                         continue;
                     }
                     File tmp = new File(adbDir, fileName + ".tmp");
@@ -104,7 +104,7 @@ public class InitService {
                     }
                     try {
                         Files.move(tmp.toPath(), targetFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                        Logger.info("File Transfer：" + targetFile.getAbsolutePath());
+                        Logger.info("File Transfer: " + targetFile.getAbsolutePath());
                     } catch (Exception moveEx) {
                         try {
                             Files.deleteIfExists(tmp.toPath());
@@ -112,16 +112,16 @@ public class InitService {
                             tmp.deleteOnExit();
                         }
                         if (targetFile.isFile() && targetFile.length() > 0L) {
-                            Logger.warn("无法覆盖正在使用的 " + fileName + "，沿用已有文件 — " + moveEx.getMessage());
+                            Logger.warn("In use, using existing: " + fileName);
                         } else {
                             throw moveEx;
                         }
                     }
                 } catch (Exception e) {
                     if (targetFile.isFile() && targetFile.length() > 0L) {
-                        Logger.warn("解压 adb 资源失败，使用已存在文件: " + targetFile.getAbsolutePath() + " — " + e.getMessage());
+                            Logger.warn("Extract failed, using existing: " + targetFile.getAbsolutePath());
                     } else {
-                        Logger.error("解压 adb 失败: " + fileName + " — " + e.getMessage());
+                        Logger.error("Extract failed: " + fileName);
                         e.printStackTrace();
                     }
                 }

@@ -54,7 +54,7 @@ public class ConnectService {
             }
             catch (Exception e){
                 e.printStackTrace();
-                Logger.info("Scrcpy Start Fail："+e.getMessage()+"，"+e.getCause());
+                Logger.info("Scrcpy start fail: " + e.getMessage());
                 // 启动失败，手动关闭 loading
                 SwingUtilities.invokeLater(loading::dispose);
             }
