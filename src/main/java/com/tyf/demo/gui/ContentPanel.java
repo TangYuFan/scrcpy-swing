@@ -1,6 +1,7 @@
 package com.tyf.demo.gui;
 
 import com.tyf.demo.service.ConstService;
+import org.pmw.tinylog.Logger;
 
 import javax.swing.*;
 import java.awt.*;
@@ -94,14 +95,12 @@ public class ContentPanel extends JPanel {
         }
         int need = w * h * 3;
         if (packedBgr.length < need) {
+            Logger.warn("scrcpy: incomplete frame data " + packedBgr.length + " < " + need);
             return;
         }
 
-        // 标记是否需要关闭 loading（只关闭一次）
         final boolean shouldCloseLoading = (frame == null);
         final byte[] copy = Arrays.copyOf(packedBgr, need);
-
-        // 检测分辨率是否变化（横竖屏切换）
         final boolean resolutionChanged = (currentWidth != w || currentHeight != h);
         final boolean firstFrame = (currentWidth == 0 && currentHeight == 0);
 
@@ -109,14 +108,18 @@ public class ContentPanel extends JPanel {
             BufferedImage bi = new BufferedImage(w, h, BufferedImage.TYPE_3BYTE_BGR);
             byte[] dst = ((DataBufferByte) bi.getRaster().getDataBuffer()).getData();
             System.arraycopy(copy, 0, dst, 0, need);
+
+            // 立即更新 frame 引用，防止 paintComponent 读到中间状态
             this.frame = bi;
             this.currentWidth = w;
             this.currentHeight = h;
 
-            // 检测到横竖屏切换时，调整窗口大小
+            if (resolutionChanged) {
+                Logger.info("scrcpy: resolution changed " + currentWidth + "x" + currentHeight + " -> " + w + "x" + h);
+            }
+
             if (!sizeInitialized || resolutionChanged) {
                 sizeInitialized = true;
-                System.out.println("resize: type=" + (w > h ? "横屏" : "竖屏") + " img=" + w + "x" + h + " panel=" + getWidth() + "x" + getHeight());
                 if (ConstService.AUTO_RESIZE_WINDOW) {
                     MainFrame.resizeForContent(w, h);
                 } else {
@@ -127,7 +130,6 @@ public class ContentPanel extends JPanel {
 
             repaint();
 
-            // 第一帧渲染完成，关闭 loading 对话框
             if (shouldCloseLoading && loadingDialog != null) {
                 loadingDialog.dispose();
                 loadingDialog = null;
@@ -163,15 +165,11 @@ public class ContentPanel extends JPanel {
             if (pw <= 0 || ph <= 0 || iw <= 0 || ih <= 0) {
                 return;
             }
-            // 等比缩放适应窗口（不超过原图尺寸）
             double scale = Math.min(1.0, Math.min((double) pw / iw, (double) ph / ih));
             int scaledW = (int) (iw * scale);
             int scaledH = (int) (ih * scale);
             int dx = (pw - scaledW) / 2;
             int dy = (ph - scaledH) / 2;
-            System.out.println("paint: panel=" + pw + "x" + ph + " | img=" + iw + "x" + ih 
-                + " | scale=" + String.format("%.4f", scale) 
-                + " | draw=" + scaledW + "x" + scaledH + " | offset=" + dx + "," + dy);
             g2.drawImage(img, dx, dy, scaledW, scaledH, null);
         } finally {
             g2.dispose();

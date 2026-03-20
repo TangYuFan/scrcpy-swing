@@ -34,6 +34,8 @@ public final class ScrcpyService {
     private static final AtomicReference<Socket> currentSocket = new AtomicReference<>();
     /** 当前 packet reader，用于 shutdown 时关闭流 */
     private static final AtomicReference<ScrcpyVideoPacketReader> currentReader = new AtomicReference<>();
+    /** 当前解码线程，用于 shutdown 时等待其结束 */
+    private static final AtomicReference<Thread> decodeThread = new AtomicReference<>();
 
     private static volatile String activeDeviceId;
 
@@ -174,14 +176,29 @@ public final class ScrcpyService {
             } catch (Exception ignore) {}
         }
 
-        // 4. 移除端口转发
+        // 4. 等待解码线程结束，防止重连时线程竞争导致闪退
+        Thread t = decodeThread.getAndSet(null);
+        if (t != null) {
+            try {
+                t.join(3000);
+                if (t.isAlive()) {
+                    Logger.warn("scrcpy decode thread did not exit in time, interrupting");
+                    t.interrupt();
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                Logger.warn("scrcpy shutdown interrupted");
+            }
+        }
+
+        // 5. 移除端口转发
         String deviceId = activeDeviceId;
         activeDeviceId = null;
         if (deviceId != null && !deviceId.trim().isEmpty()) {
             adbQuiet(deviceId, "forward --remove tcp:" + ConstService.SCRCPY_VIDEO_FORWARD_PORT);
         }
 
-        // 5. 关闭线程池
+        // 6. 关闭线程池
         ExecutorsTools.shutdown();
 
         running.set(false);
@@ -233,17 +250,20 @@ public final class ScrcpyService {
         if (!decoderRunning.compareAndSet(false, true)) {
             return;
         }
-        new Thread(() -> {
+        Thread t = new Thread(() -> {
             try {
                 decodeLoop();
-            } catch (Throwable t) {
-                Logger.error("scrcpy decode thread stopped: " + t);
-                t.printStackTrace();
+            } catch (Throwable e) {
+                Logger.error("scrcpy decode thread stopped: " + e);
+                e.printStackTrace();
             } finally {
                 decoderRunning.set(false);
                 running.set(false);
+                decodeThread.set(null);
             }
-        }, "scrcpy-decode").start();
+        }, "scrcpy-decode");
+        decodeThread.set(t);
+        t.start();
     }
 
     /**

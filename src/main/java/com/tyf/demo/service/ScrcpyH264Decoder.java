@@ -191,9 +191,11 @@ final class ScrcpyH264Decoder implements AutoCloseable {
                     continue;
                 }
 
-                if (sws != null && (fw != lastSwsW || fh != lastSwsH || srcFmt != lastSwsFmt)) {
+                boolean swsChanged = sws != null && (fw != lastSwsW || fh != lastSwsH || srcFmt != lastSwsFmt);
+                if (swsChanged) {
                     sws_freeContext(sws);
                     sws = null;
+                    Logger.info("scrcpy: video size changed, rebuilding SWS: " + lastSwsW + "x" + lastSwsH + " -> " + fw + "x" + fh);
                 }
                 lastSwsW = fw;
                 lastSwsH = fh;
@@ -210,7 +212,8 @@ final class ScrcpyH264Decoder implements AutoCloseable {
                 }
 
                 int rgbSize = av_image_get_buffer_size(AV_PIX_FMT_BGR24, fw, fh, 1);
-                if (rgbBuf == null || rgbBuf.capacity() < rgbSize) {
+                boolean rgbBufTooSmall = rgbBuf == null || rgbBuf.capacity() < rgbSize;
+                if (rgbBufTooSmall || swsChanged) {
                     if (rgbBuf != null) {
                         rgbBuf.close();
                     }
@@ -219,6 +222,7 @@ final class ScrcpyH264Decoder implements AutoCloseable {
                     rgbLinesizes = new IntPointer(4);
                     rgbPointers = new PointerPointer<>(4);
                     av_image_fill_arrays(rgbPointers, rgbLinesizes, rgbBuf, AV_PIX_FMT_BGR24, fw, fh, 1);
+                    Logger.info("scrcpy: rebuilt RGB buffer for " + fw + "x" + fh);
                 }
 
                 if (idx <= 3) {
