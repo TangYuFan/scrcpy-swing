@@ -41,11 +41,6 @@ public class InitService {
     }
 
 
-    // dex 文件初始化
-    public static void initDex(){
-        // deprecated: old dex-based mobile_demo pipeline removed (use scrcpy-server.jar instead)
-    }
-
     // scrcpy-server.jar 初始化
     public static void initScrcpyServer() {
         try {
@@ -59,70 +54,60 @@ public class InitService {
     public static void initAdb() {
         // 避免并发重复解压
         synchronized (InitService.class) {
-            doInitAdbUnlocked();
-        }
-    }
+            String adbPath = ConstService.ADB_PATH;
+            File adbDir = new File(adbPath);
 
-    /**
-     * 将 jar 内 /adb/* 解压到工作目录。
-     * Windows 上若先 delete 再写，而 adb.exe 仍被本应用或其它进程占用，会报「另一个程序正在使用此文件」并导致初始化失败。
-     * 策略：已存在且非空则跳过；仅缺失时写入；写入失败时若已有旧文件则继续用旧文件。
-     */
-    private static void doInitAdbUnlocked() {
-        String adbPath = ConstService.ADB_PATH;
-        File adbDir = new File(adbPath);
-
-        if (!adbDir.exists() && !adbDir.mkdirs()) {
-            Logger.error("无法创建 adb 目录: " + adbDir.getAbsolutePath());
-            return;
-        }
-
-        List<String> adbFiles = new ArrayList<>();
-        adbFiles.add("adb.exe");
-        adbFiles.add("AdbWinApi.dll");
-        adbFiles.add("AdbWinUsbApi.dll");
-
-        for (String fileName : adbFiles) {
-            File targetFile = new File(adbDir, fileName);
-            if (targetFile.isFile() && targetFile.length() > 0L) {
-                Logger.info("adb 已存在，跳过解压: " + targetFile.getAbsolutePath());
-                continue;
+            if (!adbDir.exists() && !adbDir.mkdirs()) {
+                Logger.error("无法创建 adb 目录: " + adbDir.getAbsolutePath());
+                return;
             }
 
-            try (InputStream in = InitService.class.getResourceAsStream("/adb/" + fileName)) {
-                if (in == null) {
-                    Logger.error("缺少文件：/adb/" + fileName);
+            List<String> adbFiles = new ArrayList<>();
+            adbFiles.add("adb.exe");
+            adbFiles.add("AdbWinApi.dll");
+            adbFiles.add("AdbWinUsbApi.dll");
+
+            for (String fileName : adbFiles) {
+                File targetFile = new File(adbDir, fileName);
+                if (targetFile.isFile() && targetFile.length() > 0L) {
+                    Logger.info("File Exist: " + fileName);
                     continue;
                 }
-                File tmp = new File(adbDir, fileName + ".tmp");
-                try (FileOutputStream out = new FileOutputStream(tmp)) {
-                    byte[] buf = new byte[8192];
-                    int len;
-                    while ((len = in.read(buf)) != -1) {
-                        out.write(buf, 0, len);
+                try (InputStream in = InitService.class.getResourceAsStream("/adb/" + fileName)) {
+                    if (in == null) {
+                        Logger.error("缺少文件：/adb/" + fileName);
+                        continue;
                     }
-                }
-                try {
-                    Files.move(tmp.toPath(), targetFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                    Logger.info("File Transfer：" + targetFile.getAbsolutePath());
-                } catch (Exception moveEx) {
+                    File tmp = new File(adbDir, fileName + ".tmp");
+                    try (FileOutputStream out = new FileOutputStream(tmp)) {
+                        byte[] buf = new byte[8192];
+                        int len;
+                        while ((len = in.read(buf)) != -1) {
+                            out.write(buf, 0, len);
+                        }
+                    }
                     try {
-                        Files.deleteIfExists(tmp.toPath());
-                    } catch (Exception ignore) {
-                        tmp.deleteOnExit();
+                        Files.move(tmp.toPath(), targetFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                        Logger.info("File Transfer：" + targetFile.getAbsolutePath());
+                    } catch (Exception moveEx) {
+                        try {
+                            Files.deleteIfExists(tmp.toPath());
+                        } catch (Exception ignore) {
+                            tmp.deleteOnExit();
+                        }
+                        if (targetFile.isFile() && targetFile.length() > 0L) {
+                            Logger.warn("无法覆盖正在使用的 " + fileName + "，沿用已有文件 — " + moveEx.getMessage());
+                        } else {
+                            throw moveEx;
+                        }
                     }
+                } catch (Exception e) {
                     if (targetFile.isFile() && targetFile.length() > 0L) {
-                        Logger.warn("无法覆盖正在使用的 " + fileName + "，沿用已有文件 — " + moveEx.getMessage());
+                        Logger.warn("解压 adb 资源失败，使用已存在文件: " + targetFile.getAbsolutePath() + " — " + e.getMessage());
                     } else {
-                        throw moveEx;
+                        Logger.error("解压 adb 失败: " + fileName + " — " + e.getMessage());
+                        e.printStackTrace();
                     }
-                }
-            } catch (Exception e) {
-                if (targetFile.isFile() && targetFile.length() > 0L) {
-                    Logger.warn("解压 adb 资源失败，使用已存在文件: " + targetFile.getAbsolutePath() + " — " + e.getMessage());
-                } else {
-                    Logger.error("解压 adb 失败: " + fileName + " — " + e.getMessage());
-                    e.printStackTrace();
                 }
             }
         }
@@ -137,24 +122,23 @@ public class InitService {
             initWorkSpace();
             // 初始化日志
             initLog();
-            // 初始化dex文件
-            // initDex(); // removed
-            // adb 命令行初始化
+            // adb命令行初始化
             initAdb();
-            // scrcpy-server 初始化
+            // scrcpy-server初始化到本地
             initScrcpyServer();
         });
 
-        // 模拟进度
+        // 进度 TODO
         try {
             for (int i = 0; i < 100; i++) {
                 progress.accept(i);
-                Thread.sleep(5);
+                Thread.sleep(2);
             }
         }
         catch (Exception e){
             e.printStackTrace();
         }
+
         // 执行完成调用这个
         finish.accept(null);
 

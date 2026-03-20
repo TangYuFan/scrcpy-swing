@@ -6,7 +6,7 @@ import com.tyf.demo.entity.Device;
 import com.tyf.demo.entity.DeviceTableModel;
 import com.tyf.demo.service.ConnectService;
 import com.tyf.demo.service.ConstService;
-import com.tyf.demo.util.DexTools;
+import com.tyf.demo.util.DeviceTools;
 import com.tyf.demo.util.GuiTools;
 import org.pmw.tinylog.Logger;
 
@@ -82,7 +82,7 @@ public class TopPanel extends JPanel {
                     return;
                 }
                 // 查询当前手机设备
-                List<Device> devices = DexTools.listDevices();
+                List<Device> devices = DeviceTools.listDevices();
                 DeviceTableModel model = new DeviceTableModel(devices);
                 JTable table = new JTable(model);
                 table.getColumn("Action").setCellRenderer(new ButtonRenderer());

@@ -3,19 +3,11 @@ package com.tyf.demo.util;
 
 import com.tyf.demo.entity.Device;
 import com.tyf.demo.service.ConstService;
-import com.tyf.demo.service.InitService;
 import org.pmw.tinylog.Logger;
 
-import java.io.*;
-import java.net.URISyntaxException;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Enumeration;
 import java.util.List;
-import java.util.function.Consumer;
-import java.util.jar.JarEntry;
-import java.util.jar.JarFile;
 import java.util.stream.Collectors;
 
 /**
@@ -23,7 +15,7 @@ import java.util.stream.Collectors;
  *   @auth : tyf
  *   @date : 2026-03-18 11:16:19
 */
-public class DexTools {
+public class DeviceTools {
 
     // 查询所有开启 usb 调试的手机
     public static List<Device> listDevices(){

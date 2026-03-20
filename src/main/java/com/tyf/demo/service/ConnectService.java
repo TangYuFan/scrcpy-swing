@@ -31,9 +31,8 @@ public class ConnectService {
 
             // 提示框
             JDialog loading = GuiTools.showLoading("opening", MainFrame.getMainFrame());
-
             try {
-                // scrcpy-server mode (video only for now)
+                // 启动手机 agent 应用
                 ScrcpyService.start(device);
             }
             catch (Exception e){

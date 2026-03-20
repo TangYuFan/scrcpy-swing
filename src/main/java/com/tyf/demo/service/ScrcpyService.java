@@ -15,35 +15,21 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
+
 /**
- * scrcpy-server runner + video receiver（PC 端纯 Java）。
+ * Scrcpy 服务端运行器 + 视频接收器（PC 端纯 Java 实现）。
  * <p>
- * <b>与 QtScrcpy / 官方 scrcpy 的差异（为何本方案更易卡、延迟大）：</b>
+ * <b>与 QtScrcpy / 官方 scrcpy 的差异（为何本方案延迟较大）：</b>
  * <ul>
  *   <li>QtScrcpy：进程内链接 libavcodec，Demuxer 独立线程读 socket，解码后 YUV 走 OpenGL，无「每帧 8MB BGR 管道」。</li>
  *   <li>官方 scrcpy：Rust/SDL，同样进程内解码 + 纹理，延迟极低。</li>
  *   <li>本工程：使用 JavaCPP（JavaCV 底层）进程内 FFmpeg 解码，最终仍需要把帧转换为 BGR 并交给 Swing 绘制。</li>
  * </ul>
- * 缓解手段：设备端 {@link #SCRCPY_MAX_SIZE} 降分辨率、必要时丢帧/降帧率、以及优化 Swing 侧绘制与拷贝。
+ * 缓解手段：设备端 {@link ConstService#SCRCPY_MAX_SIZE} 降分辨率、必要时丢帧/降帧率、以及优化 Swing 侧绘制与拷贝。
  */
 public final class ScrcpyService {
 
-    private static final String SERVER_RESOURCE = "/scrcpy/scrcpy-server-v3.3.4.jar";
-    private static final String DEVICE_SERVER_PATH = "/data/local/tmp/scrcpy-server.jar";
-    private static final int VIDEO_FORWARD_PORT = 27183; // any free local port
-
-    /**
-     * 设备编码最大边（scrcpy {@code max_size}）。0=原生分辨率（PC 软解压力最大）。
-     * 1280 可在多数机上明显改善流畅度；要清晰度可调大或设 0。
-     */
-    private static final int SCRCPY_MAX_SIZE = 1280;
-
-    /**
-     * 为 true 时将解码后的帧绘制到 {@link com.tyf.demo.gui.ContentPanel}；
-     * 为 false 时仅打抽样日志（排障用）。
-     */
-    private static final boolean SCRCPY_DRAW_DECODED_TO_UI = true;
-
+    /** 标记 scrcpy 是否正在运行 */
     private static final AtomicBoolean running = new AtomicBoolean(false);
     private static final AtomicBoolean decoderRunning = new AtomicBoolean(false);
 
@@ -62,9 +48,20 @@ public final class ScrcpyService {
         return extractServerJar(true);
     }
 
+    /**
+     * 启动 scrcpy 投屏服务。
+     * 完整流程：
+     * 1. 确保本地 scrcpy-server.jar 已提取
+     * 2. 通过 adb push 将 jar 推送到手机
+     * 3. 建立 adb forward 端口转发
+     * 4. 在手机上启动 scrcpy-server（后台进程）
+     * 5. 建立 socket 连接并开始接收/解码视频流
+     *
+     * @param device 要投屏的设备
+     */
     public static void start(Device device) throws Exception {
         if (!running.compareAndSet(false, true)) {
-            Logger.info("scrcpy already running");
+            Logger.info("scrcpy 已在运行中，跳过启动");
             return;
         }
 
@@ -73,40 +70,57 @@ public final class ScrcpyService {
         try {
             activeDeviceId = deviceId;
 
-            // 1) Ensure local server jar exists
+            // 步骤 1：确保本地 scrcpy-server.jar 已存在（若不存在则从 resources 提取）
             File localJar = extractServerJar(false);
 
-            // 2) Push jar
-            adb(deviceId, "push \"" + localJar.getAbsolutePath() + "\" " + DEVICE_SERVER_PATH);
+            // 步骤 2：将 scrcpy-server.jar 推送到手机（adb push <本地路径> <手机路径>）
+            adb(deviceId, "push \"" + localJar.getAbsolutePath() + "\" " + ConstService.SCRCPY_DEVICE_SERVER_PATH);
 
-            // 3) Forward local port to localabstract "scrcpy"
-            // tunnel_forward=true => server creates LocalServerSocket("scrcpy") and accepts (video only if audio/control disabled)
-            // remove stale forward to avoid half-open / wrong peer (ignore errors)
-            adbQuiet(deviceId, "forward --remove tcp:" + VIDEO_FORWARD_PORT);
-            adb(deviceId, "forward tcp:" + VIDEO_FORWARD_PORT + " localabstract:scrcpy");
+            // 步骤 3：建立 adb 端口转发
+            // 将本地 TCP 端口转发到手机的 localabstract:scrcpy
+            // tunnel_forward=true 表示手机监听连接，PC 主动连接
+            // 先移除旧的转发，避免半开连接或错误的对端
+            adbQuiet(deviceId, "forward --remove tcp:" + ConstService.SCRCPY_VIDEO_FORWARD_PORT);
+            adb(deviceId, "forward tcp:" + ConstService.SCRCPY_VIDEO_FORWARD_PORT + " localabstract:scrcpy");
 
-            // 4) Start server (async), rely on stderr/stdout for logs
-            // Keep it simple: video only, no control, no audio, no metas for now
+            // 步骤 4：启动手机上的 scrcpy-server（后台异步执行）
+            // 命令格式：shell CLASSPATH=<jar路径> app_process / <启动类>
+            // 参数说明：
+            //   log_level=info       - 日志级别
+            //   video=true           - 启用视频流
+            //   audio=false          - 禁用音频
+            //   control=false        - 禁用控制（仅视频）
+            //   tunnel_forward=true  - 隧道模式：手机创建 LocalServerSocket 监听
+            //   raw_stream=false     - 使用 scrcpy 协议封装
+            //   send_device_meta=true    - 发送设备信息
+            //   send_codec_meta=true     - 发送编码器信息
+            //   send_frame_meta=true     - 发送帧元数据
+            //   send_dummy_byte=true     - 发送占位字节
+            //   max_fps=60           - 最大帧率
+            //   max_size=1280        - 最大分辨率边长
             String startCmd =
-                    "shell CLASSPATH=" + DEVICE_SERVER_PATH + " app_process / com.genymobile.scrcpy.Server 3.3.4 " +
+                    "shell CLASSPATH=" + ConstService.SCRCPY_DEVICE_SERVER_PATH + " app_process / com.genymobile.scrcpy.Server " + ConstService.SCRCPY_SERVER_VERSION + " " +
                             "log_level=info " +
                             "video=true audio=false control=false " +
                             "tunnel_forward=true " +
-                            // align with QtScrcpyCore/scrcpy packet mode
                             "raw_stream=false " +
                             "send_device_meta=true send_codec_meta=true send_frame_meta=true send_dummy_byte=true " +
-                            "max_fps=60" +
-                            (SCRCPY_MAX_SIZE > 0 ? " max_size=" + SCRCPY_MAX_SIZE : "");
+                            "max_fps=" + ConstService.SCRCPY_MAX_FPS +
+                            (ConstService.SCRCPY_MAX_SIZE > 0 ? " max_size=" + ConstService.SCRCPY_MAX_SIZE : "");
             String fullStartCmd = adbCmd(deviceId) + " " + startCmd;
-            Logger.info(fullStartCmd);
+            Logger.info("启动 scrcpy-server 命令: " + fullStartCmd);
+
+            // 后台启动 adb shell 进程（保持运行，接收 server 日志）
             Process shell = CmdTools.startBackgroundProcess(fullStartCmd);
             scrcpyAdbShell.set(shell);
 
-            // 5) Connect and decode (async)
+            // 步骤 5：启动视频解码线程（异步）
+            // 该线程会尝试连接 socket，接收并解码视频流
             startDecodeThread();
             started = true;
         } catch (Exception e) {
-            adbQuiet(deviceId, "forward --remove tcp:" + VIDEO_FORWARD_PORT);
+            // 发生异常时，清理资源
+            adbQuiet(deviceId, "forward --remove tcp:" + ConstService.SCRCPY_VIDEO_FORWARD_PORT);
             Process p = scrcpyAdbShell.getAndSet(null);
             destroyQuietly(p);
             activeDeviceId = null;
@@ -119,25 +133,26 @@ public final class ScrcpyService {
     }
 
     /**
-     * 关闭投屏相关 adb 子进程与端口转发，释放本程序对 adb.exe 的占用。
-     * 在窗口关闭、shutdown hook 中调用；可重复调用。
+     * 关闭 scrcpy 投屏服务，释放所有资源。
+     * 在窗口关闭、JVM 关闭时调用；可重复调用。
+     * 清理内容：销毁 adb shell 子进程、移除 adb 端口转发、杀死本地 adb server
      */
     public static void shutdown() {
+        // 1. 销毁 adb shell 子进程
         Process p = scrcpyAdbShell.getAndSet(null);
         destroyQuietly(p);
 
+        // 2. 移除端口转发
         String deviceId = activeDeviceId;
         activeDeviceId = null;
         if (deviceId != null && !deviceId.trim().isEmpty()) {
-            adbQuiet(deviceId, "forward --remove tcp:" + VIDEO_FORWARD_PORT);
+            adbQuiet(deviceId, "forward --remove tcp:" + ConstService.SCRCPY_VIDEO_FORWARD_PORT);
         }
 
-        // 结束由本目录 adb 启动的 adb server，进一步释放 adb.exe / dll 的文件映射（若与其它 IDE 共用系统 adb 则可能互相影响）
+        // 3. 杀死本地 adb server，释放文件占用
         try {
             CmdTools.exec(adbCmd(null) + " kill-server");
-        } catch (Exception ignore) {
-            // exec 内部已捕获；兜底
-        }
+        } catch (Exception ignore) {}
 
         running.set(false);
     }
@@ -196,16 +211,32 @@ public final class ScrcpyService {
         }, "scrcpy-decode").start();
     }
 
+    /**
+     * 解码循环：连接 socket → 读取视频流 → 解码 → 渲染。
+     *
+     * 连接策略（tunnel_forward 模式）：
+     * - 手机创建 LocalServerSocket("scrcpy") 监听
+     * - PC 主动连接
+     * - 由于时序问题，PC 可能先于手机 accept，导致 EOF
+     * - 解决方案：重试连接 + 读取，直到成功读取视频头
+     *
+     * 视频流结构：
+     * 1. 头部：设备信息、编码器参数、视频分辨率
+     * 2. 数据包：H.264 编码的帧数据（包含元数据）
+     */
     private static void decodeLoop() throws Exception {
-        // tunnel_forward: device listens then accept(). PC often connects before accept → immediate EOF.
-        // Same idea as QtScrcpyCore: retry connect + read first bytes until header is readable.
+        // 等待手机上的 scrcpy-server 启动完成
         Thread.sleep(400);
-        final int maxAttempts = 50;
-        final int retryGapMs = 200;
+
+        final int maxAttempts = 50;   // 最多重试 50 次
+        final int retryGapMs = 200;   // 每次重试间隔 200ms
         Socket s = null;
         ScrcpyVideoPacketReader reader = null;
         IOException lastFail = null;
         boolean headerOk = false;
+
+        // 步骤 1：连接 socket（带重试）
+        // 尝试连接本地转发的端口，直到成功读取视频头
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             if (reader != null) {
                 try {
@@ -220,57 +251,61 @@ public final class ScrcpyService {
                 s = null;
             }
             try {
-                Logger.info("scrcpy video connect attempt " + attempt + "/" + maxAttempts + " -> 127.0.0.1:" + VIDEO_FORWARD_PORT);
+                Logger.info("scrcpy 视频连接尝试 " + attempt + "/" + maxAttempts + " -> 127.0.0.1:" + ConstService.SCRCPY_VIDEO_FORWARD_PORT);
                 s = new Socket();
-                s.connect(new InetSocketAddress("127.0.0.1", VIDEO_FORWARD_PORT), 5000);
-                s.setTcpNoDelay(true);
-                s.setSoTimeout(0);
+                s.connect(new InetSocketAddress("127.0.0.1", ConstService.SCRCPY_VIDEO_FORWARD_PORT), 5000);
+                s.setTcpNoDelay(true);  // 禁用 Nagle 算法，降低延迟
+                s.setSoTimeout(0);     // 无超时（阻塞模式读取）
                 reader = new ScrcpyVideoPacketReader(s.getInputStream());
-                reader.readHeader();
+                reader.readHeader();    // 读取视频头（分辨率、编码器信息等）
                 headerOk = true;
                 break;
             } catch (IOException e) {
                 lastFail = e;
-                Logger.info("scrcpy: waiting for device accept / header (" + e.getMessage() + ")");
+                Logger.info("scrcpy: 等待手机 accept / 读取视频头 (" + e.getMessage() + ")");
                 Thread.sleep(retryGapMs);
             }
         }
+
+        // 连接失败，抛出异常
         if (!headerOk) {
             if (reader != null) {
                 try {
                     reader.close();
                 } catch (Exception ignore) {}
-                reader = null;
             }
             if (s != null) {
                 try {
                     s.close();
                 } catch (IOException ignore) {}
-                s = null;
             }
-            throw new IOException("scrcpy: failed to read stream header after " + maxAttempts + " attempts", lastFail);
+            throw new IOException("scrcpy: 在 " + maxAttempts + " 次尝试后仍无法读取视频头", lastFail);
         }
 
+        // 步骤 2：获取视频分辨率
         final int vw = reader.getWidth();
         final int vh = reader.getHeight();
-        Logger.info("scrcpy: 视频解码 " + vw + "x" + vh + "（JavaCV/FFmpeg 进程内解码）");
+        Logger.info("scrcpy: 视频分辨率 " + vw + "x" + vh + "（JavaCV/FFmpeg 进程内解码）");
 
+        // 步骤 3：视频解码主循环
+        // 从 socket 读取 H.264 数据包 → 使用 FFmpeg 解码为原始图像 → 绘制到 UI
         try (Socket sock = s) {
             try (ScrcpyVideoPacketReader r = reader) {
                 AtomicLong decodedFrames = new AtomicLong();
                 ScrcpyFrameSink sink = (packed, w, h) -> {
                     long n = decodedFrames.incrementAndGet();
                     int len = packed == null ? 0 : packed.length;
-                    int expect = w * h * 3;
-                    // 抽样日志：前几帧 + 每隔若干帧（避免刷屏）
+                    int expect = w * h * 3;  // BGR 格式，每像素 3 字节
+
+                    // 抽样日志：前 5 帧 + 每隔 120 帧（避免刷屏）
                     if (n <= 5 || n % 120 == 0) {
                         int b0 = (packed != null && len > 0) ? (packed[0] & 0xff) : -1;
                         int bLast = (packed != null && len > 1) ? (packed[len - 1] & 0xff) : -1;
-                        Logger.info("scrcpy: decode OK frame#" + n + " " + w + "x" + h
-                                + " bytes=" + len + (len == expect ? "" : " (expect " + expect + ")")
+                        Logger.info("scrcpy: 解码成功 frame#" + n + " " + w + "x" + h
+                                + " bytes=" + len + (len == expect ? "" : " (预期 " + expect + ")")
                                 + " b[0]=" + b0 + " b[last]=" + bLast);
                     }
-                    if (SCRCPY_DRAW_DECODED_TO_UI && MainPanel.getContentPanel() != null) {
+                    if (ConstService.SCRCPY_DRAW_DECODED_TO_UI && MainPanel.getContentPanel() != null) {
                         MainPanel.getContentPanel().postFramePackedBgr(packed, w, h);
                     }
                 };
@@ -279,23 +314,30 @@ public final class ScrcpyService {
                     long accessUnits = 0;
                     while (true) {
                         try {
+                            // 读取下一个 H.264 数据包
                             byte[] au = r.nextMediaPacket();
                             accessUnits++;
                             boolean sample = (accessUnits <= 5 || accessUnits % 120 == 0);
                             if (sample) {
                                 Logger.info("scrcpy: access-units=" + accessUnits + " auBytes=" + (au == null ? 0 : au.length));
                             }
+
+                            // 计时：记录解码耗时
                             long t0 = sample ? System.nanoTime() : 0;
+
+                            // 解码 H.264 数据包
                             dec.decode(au, sink);
+
                             if (sample) {
                                 long dtMs = (System.nanoTime() - t0) / 1_000_000L;
-                                Logger.info("scrcpy: decode AU#" + accessUnits + " dt=" + dtMs + "ms");
+                                Logger.info("scrcpy: 解码 AU#" + accessUnits + " 耗时=" + dtMs + "ms");
                             }
                         } catch (IOException e) {
-                            Logger.info("scrcpy: stream closed or read error — " + e.getMessage());
+                            // 流关闭或读取错误，正常退出循环
+                            Logger.info("scrcpy: 流关闭或读取错误 — " + e.getMessage());
                             break;
                         } catch (Throwable t) {
-                            Logger.error("scrcpy: decode loop error — " + t);
+                            Logger.error("scrcpy: 解码循环异常 — " + t);
                             t.printStackTrace();
                             break;
                         }
@@ -305,20 +347,30 @@ public final class ScrcpyService {
         }
     }
 
+    /**
+     * 从 resources 提取 scrcpy-server.jar 到本地工作目录。
+     * forceRewrite=true 时强制重新提取，forceRewrite=false 时仅当文件不存在时提取
+     *
+     * @param forceRewrite 是否强制重新提取
+     * @return 提取后的 jar 文件
+     */
     private static File extractServerJar(boolean forceRewrite) throws Exception {
         File dir = new File(ConstService.WORKSPACE, "scrcpy");
         if (!dir.exists()) {
             dir.mkdirs();
         }
-        File out = new File(dir, "scrcpy-server-v3.3.4.jar");
+        File out = new File(dir, ConstService.SCRCPY_SERVER_JAR_NAME);
+
+        // 文件已存在且不强制重写，直接返回
         if (out.exists() && !forceRewrite) {
-            Logger.info("scrcpy server jar: " + out.getAbsolutePath());
+            Logger.info("scrcpy server jar 已存在: " + out.getAbsolutePath());
             return out;
         }
 
-        try (InputStream in = ScrcpyService.class.getResourceAsStream(SERVER_RESOURCE)) {
+        // 从 resources 读取并写入本地文件
+        try (InputStream in = ScrcpyService.class.getResourceAsStream(ConstService.SCRCPY_SERVER_RESOURCE)) {
             if (in == null) {
-                throw new IllegalStateException("Missing resource " + SERVER_RESOURCE);
+                throw new IllegalStateException("缺少资源文件: " + ConstService.SCRCPY_SERVER_RESOURCE);
             }
             try (FileOutputStream fos = new FileOutputStream(out)) {
                 byte[] buf = new byte[8192];
@@ -328,10 +380,13 @@ public final class ScrcpyService {
                 }
             }
         }
-        Logger.info("scrcpy server jar: " + out.getAbsolutePath());
+        Logger.info("scrcpy server jar 已提取: " + out.getAbsolutePath());
         return out;
     }
 
+    /**
+     * 执行 adb 命令（带日志记录）
+     */
     private static void adb(String deviceId, String args) {
         String cmd = adbCmd(deviceId) + " " + args;
         Logger.info(cmd);
@@ -341,12 +396,17 @@ public final class ScrcpyService {
         }
     }
 
-    /** adb command that may legitimately fail (e.g. forward --remove when none). */
+    /**
+     * 执行 adb 命令（静默模式，忽略执行结果）。用于清理操作
+     */
     private static void adbQuiet(String deviceId, String args) {
         String cmd = adbCmd(deviceId) + " " + args;
         CmdTools.exec(cmd);
     }
 
+    /**
+     * 构造 adb 命令
+     */
     private static String adbCmd(String deviceId) {
         String adb = ConstService.ADB_PATH + "adb.exe";
         if (deviceId == null || deviceId.trim().isEmpty()) {
