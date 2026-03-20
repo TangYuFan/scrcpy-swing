@@ -70,27 +70,38 @@ public class GuiTools {
                 Graphics2D g2 = (Graphics2D) g;
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
+                int w = getWidth();
+                int h = getHeight();
+
                 // 背景
-                g2.setColor(new Color(40, 40, 40, 220));
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 16, 16);
+                g2.setColor(new Color(60, 60, 65));
+                g2.fillRoundRect(0, 0, w, h, 16, 16);
 
-                // 旋转圈
-                int cx = getWidth() / 2;
-                int cy = getHeight() / 2 - 8;
+                // 加载圈
+                int cx = w / 2;
+                int cy = h / 2 - 8;
 
-                g2.setStroke(new BasicStroke(3f));
-                g2.setColor(Color.WHITE);
-                g2.drawArc(cx - 10, cy - 10, 20, 20,
-                        (int) (angle * 50), 270);
+                g2.setStroke(new BasicStroke(3f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                g2.setColor(new Color(100, 100, 105));
+                g2.drawArc(cx - 10, cy - 10, 20, 20, 0, 360);
+
+                // 渐变色旋转弧
+                g2.setStroke(new BasicStroke(3f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                int arcLen = 180;
+                for (int i = 0; i < arcLen; i += 8) {
+                    float t = (i + angle * 100) % arcLen / (float) arcLen;
+                    g2.setColor(new Color(100, 160, 255, (int) (255 * (1 - t * 0.4f))));
+                    g2.drawArc(cx - 10, cy - 10, 20, 20,
+                            (int) (-90 - angle * 50 + i), 8);
+                }
 
                 // 文字
-                g2.setFont(ConstService.FONT_NORMAL);
+                g2.setFont(new Font("Microsoft YaHei", Font.PLAIN, 13));
+                g2.setColor(new Color(220, 220, 225));
                 FontMetrics fm = g2.getFontMetrics();
-                int textWidth = fm.stringWidth(text);
-
-                g2.drawString(text,
-                        (getWidth() - textWidth) / 2,
-                        cy + 30);
+                String displayText = "Connecting...";
+                int textWidth = fm.stringWidth(displayText);
+                g2.drawString(displayText, (w - textWidth) / 2, cy + 30);
             }
         };
 
@@ -101,7 +112,7 @@ public class GuiTools {
         dialog.pack();
         dialog.setLocationRelativeTo(parent);
 
-        // ✅ 跟随父窗口移动
+        // 跟随父窗口移动
         ComponentListener listener = new ComponentAdapter() {
             @Override
             public void componentMoved(ComponentEvent e) {

@@ -42,7 +42,13 @@ public final class ConstService {
      */
     public static final int SCRCPY_MAX_SIZE = 1280;
     /** 最大帧率 */
-    public static final int SCRCPY_MAX_FPS = 60;
+    // 理论带宽和延迟
+    //    本地 Socket (adb forward)	~100MB/s+	<1ms
+    //    WiFi	~30-100Mbps	                    5-20ms
+    //    USB	~480Mbps	                    <1ms
+
+    public static final int SCRCPY_MAX_FPS = 120;
+//    public static final int SCRCPY_MAX_FPS = 60;
     /** 为 true 时将解码后的帧绘制到 UI；为 false 时仅打抽样日志（排障用） */
     public static final boolean SCRCPY_DRAW_DECODED_TO_UI = true;
 

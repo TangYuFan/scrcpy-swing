@@ -28,8 +28,7 @@ public class ContentPanel extends JPanel {
 
     public ContentPanel() {
         setLayout(new BorderLayout());
-        setBackground(ConstService.COLOR_BLACK);
-        // 初始尺寸，后续会动态调整
+        setBackground(new Color(220, 220, 220));
         setPreferredSize(new Dimension(ConstService.MAIN_WIDTH, ConstService.MAIN_HEIGHT));
     }
 

@@ -273,10 +273,10 @@ public final class ScrcpyService {
     */
     private static void decodeLoop() throws Exception {
         // 等待手机上的 scrcpy-server 启动完成
-        Thread.sleep(400);
+        Thread.sleep(200);
 
         final int maxAttempts = 50;   // 最多重试 50 次
-        final int retryGapMs = 200;   // 每次重试间隔 200ms
+        final int retryGapMs = 100;   // 每次重试间隔 100ms（更快检测连接）
         Socket s = null;
         ScrcpyVideoPacketReader reader = null;
         IOException lastFail = null;
@@ -298,18 +298,18 @@ public final class ScrcpyService {
                 s = null;
             }
             try {
-                Logger.info("scrcpy connect attempt " + attempt + "/" + maxAttempts + " -> 127.0.0.1:" + ConstService.SCRCPY_VIDEO_FORWARD_PORT);
+                Logger.debug("scrcpy connect attempt " + attempt + "/" + maxAttempts);
                 s = new Socket();
-                s.connect(new InetSocketAddress("127.0.0.1", ConstService.SCRCPY_VIDEO_FORWARD_PORT), 5000);
-                s.setTcpNoDelay(true);  // 禁用 Nagle 算法，降低延迟
-                s.setSoTimeout(0);     // 无超时（阻塞模式读取）
+                s.connect(new InetSocketAddress("127.0.0.1", ConstService.SCRCPY_VIDEO_FORWARD_PORT), 2000);
+                s.setTcpNoDelay(true);
+                s.setSoTimeout(0);
                 reader = new ScrcpyVideoPacketReader(s.getInputStream());
                 reader.readHeader();    // 读取视频头（分辨率、编码器信息等）
                 headerOk = true;
                 break;
             } catch (IOException e) {
                 lastFail = e;
-                Logger.info("scrcpy: waiting for device accept/read header (" + e.getMessage() + ")");
+                Logger.debug("scrcpy: waiting for device (" + e.getMessage() + ")");
                 Thread.sleep(retryGapMs);
             }
         }
@@ -348,13 +348,9 @@ public final class ScrcpyService {
                     int len = packed == null ? 0 : packed.length;
                     int expect = w * h * 3;  // BGR 格式，每像素 3 字节
 
-                    // 抽样日志：前 5 帧 + 每隔 120 帧（避免刷屏）
-                    if (n <= 5 || n % 120 == 0) {
-                        int b0 = (packed != null && len > 0) ? (packed[0] & 0xff) : -1;
-                        int bLast = (packed != null && len > 1) ? (packed[len - 1] & 0xff) : -1;
-                        Logger.info("scrcpy: decode success frame#" + n + " " + w + "x" + h
-                                + " bytes=" + len + (len == expect ? "" : " (expected " + expect + ")")
-                                + " b[0]=" + b0 + " b[last]=" + bLast);
+                    // 抽样日志：前 3 帧 + 每隔 300 帧（约每 5 秒）
+                    if (n <= 3 || n % 300 == 0) {
+                        Logger.debug("scrcpy: frame#" + n + " " + w + "x" + h + " bytes=" + len);
                     }
                     if (ConstService.SCRCPY_DRAW_DECODED_TO_UI && MainPanel.getContentPanel() != null) {
                         MainPanel.getContentPanel().postFramePackedBgr(packed, w, h);
@@ -368,9 +364,9 @@ public final class ScrcpyService {
                             // 读取下一个 H.264 数据包
                             byte[] au = r.nextMediaPacket();
                             accessUnits++;
-                            boolean sample = (accessUnits <= 5 || accessUnits % 120 == 0);
+                            boolean sample = (accessUnits <= 3 || accessUnits % 300 == 0);
                             if (sample) {
-                                Logger.info("scrcpy: access-units=" + accessUnits + " auBytes=" + (au == null ? 0 : au.length));
+                                Logger.debug("scrcpy: au#" + accessUnits + " bytes=" + (au == null ? 0 : au.length));
                             }
 
                             // 计时：记录解码耗时
@@ -381,11 +377,10 @@ public final class ScrcpyService {
 
                             if (sample) {
                                 long dtMs = (System.nanoTime() - t0) / 1_000_000L;
-                                Logger.info("scrcpy: decode AU#" + accessUnits + " time=" + dtMs + "ms");
+                                Logger.debug("scrcpy: au#" + accessUnits + " time=" + dtMs + "ms");
                             }
                         } catch (IOException e) {
-                            // 流关闭或读取错误，正常退出循环
-                            Logger.info("scrcpy: stream closed/EOF - " + e.getMessage());
+                            Logger.debug("scrcpy: stream closed/EOF");
                             break;
                         } catch (Throwable t) {
                             Logger.error("scrcpy: decode loop error - " + t);
