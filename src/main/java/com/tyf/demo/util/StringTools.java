@@ -1,8 +1,17 @@
 package com.tyf.demo.util;
 
+/**
+ *   @desc : 字符串工具类
+ *   @auth : tyf
+ *   @date : 2026-03-20 14:04:14
+*/
 public class StringTools {
 
-
+    /**
+     *   @desc : 判断是否为IPv4地址格式
+     *   @auth : tyf
+     *   @date : 2026-03-20 14:04:14
+    */
     public static boolean isIpv4Port(String s) {
         if (s == null) return false;
         String[] parts = s.trim().split(":");

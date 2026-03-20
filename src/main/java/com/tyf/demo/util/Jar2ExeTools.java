@@ -16,12 +16,16 @@ import java.util.stream.Collectors;
 /**
  *   @desc : 打包成 exe 的脚本
  *   @auth : tyf
- *   @date : 2024-12-19 15:28:00
- */
+ *   @date : 2026-03-20 14:04:14
+*/
 public class Jar2ExeTools {
 
 
-    // pom 解析 maven-assembly-plugin 插件中的 mainClass 和 descriptorRef 元素的值
+    /**
+     *   @desc : 解析 maven-assembly-plugin
+     *   @auth : tyf
+     *   @date : 2026-03-20 14:04:14
+    */
     public static String[] parseMavenAssemblyPlugin(String xmlPath) throws Exception {
         // 定义返回值，index0: mainClass，index1: descriptorRef
         String[] values = new String[2];
@@ -64,7 +68,11 @@ public class Jar2ExeTools {
 
 
 
-    // 打包
+    /**
+     *   @desc : 打包
+     *   @auth : tyf
+     *   @date : 2026-03-20 14:04:14
+    */
     public static void build(String projectPath) throws Exception{
 
         System.out.println("---------------------------------");

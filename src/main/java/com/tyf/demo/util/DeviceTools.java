@@ -11,13 +11,17 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- *   @desc : dex 文件处理
+ *   @desc : 设备工具类
  *   @auth : tyf
- *   @date : 2026-03-18 11:16:19
+ *   @date : 2026-03-20 14:04:14
 */
 public class DeviceTools {
 
-    // 查询所有开启 usb 调试的手机
+    /**
+     *   @desc : 查询所有设备
+     *   @auth : tyf
+     *   @date : 2026-03-20 14:04:14
+    */
     public static List<Device> listDevices(){
 
         String adb = ConstService.ADB_PATH + "adb.exe";

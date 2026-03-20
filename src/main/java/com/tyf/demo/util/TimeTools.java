@@ -7,9 +7,9 @@ import java.util.Calendar;
 import java.util.Date;
 
 /**
-*   @desc : 时间工具类
-*   @auth : TYF
-*   @date : 2019-10-14 - 11:26
+ *   @desc : 时间工具类
+ *   @auth : tyf
+ *   @date : 2026-03-20 14:04:14
 */
 public class TimeTools {
 
@@ -37,9 +37,9 @@ public class TimeTools {
 
 
 	/**
-	*   @desc : 时间戳转时间字符串
-	*   @auth : TYF
-	*   @date : 2019-10-14 - 13:25
+	 *   @desc : 时间戳转时间字符串
+	 *   @auth : tyf
+	 *   @date : 2026-03-20 14:04:14
 	*/
 	public static String timeStempToTimeStr(Long millisecond){
 		SimpleDateFormat simpleDateFormat = new SimpleDateFormat(formatArray[2]);
@@ -50,9 +50,9 @@ public class TimeTools {
 
 	/**
 	 *   @desc : 时间戳转时间字符串
-	 *   @auth : TYF
-	 *   @date : 2019-10-14 - 13:25
-	 */
+	 *   @auth : tyf
+	 *   @date : 2026-03-20 14:04:14
+	*/
 	public static String timeStempToTimeStr(){
 		SimpleDateFormat simpleDateFormat = new SimpleDateFormat(formatArray[10]);
 		Date date = new Date(System.currentTimeMillis());
@@ -60,6 +60,11 @@ public class TimeTools {
 		return res;
 	}
 
+	/**
+	 *   @desc : 时间戳转时间字符串
+	 *   @auth : tyf
+	 *   @date : 2026-03-20 14:04:14
+	*/
 	public static String timeStempToTimeStr(int index){
 		SimpleDateFormat simpleDateFormat = new SimpleDateFormat(formatArray[index]);
 		Date date = new Date(System.currentTimeMillis());
@@ -70,9 +75,9 @@ public class TimeTools {
 
 	/**
 	 *   @desc : 时间戳转时间字符串
-	 *   @auth : TYF
-	 *   @date : 2019-10-14 - 13:25
-	 */
+	 *   @auth : tyf
+	 *   @date : 2026-03-20 14:04:14
+	*/
 	public static String timeStempToTimeStr(Long millisecond,Integer index){
 		SimpleDateFormat simpleDateFormat = new SimpleDateFormat(formatArray[index]);
 		Date date = new Date(millisecond);
@@ -82,9 +87,9 @@ public class TimeTools {
 
 
 	/**
-	*   @desc : 获得某天最大时间 2019-10-15 23:59:59
-	*   @auth : TYF
-	*   @date : 2019-12-03 - 11:23
+	 *   @desc : 获得某天最大时间
+	 *   @auth : tyf
+	 *   @date : 2026-03-20 14:04:14
 	*/
 	public static Long getMillisecondEndOfDay(Date date) {
 		LocalDateTime localDateTime = LocalDateTime.ofInstant(Instant.ofEpochMilli(date.getTime()), ZoneId.systemDefault());;
@@ -93,9 +98,9 @@ public class TimeTools {
 	}
 
 	/**
-	*   @desc : 获得某天最小时间 2019-10-15 00:00:00
-	*   @auth : TYF
-	*   @date : 2019-12-03 - 11:23
+	 *   @desc : 获得某天最小时间
+	 *   @auth : tyf
+	 *   @date : 2026-03-20 14:04:14
 	*/
 	public static Long getMillisecondStartOfDay(Date date) {
 		LocalDateTime localDateTime = LocalDateTime.ofInstant(Instant.ofEpochMilli(date.getTime()), ZoneId.systemDefault());
@@ -107,9 +112,9 @@ public class TimeTools {
 
 	/**
 	 *   @desc : 获取向前/向后offSet天的最小时间
-	 *   @auth : TYF
-	 *   @date : 2019-12-03 - 16:08
-	 */
+	 *   @auth : tyf
+	 *   @date : 2026-03-20 14:04:14
+	*/
 	public static Long getMillisecondStartOfDayWithOFFset(Date date, Integer offSet){
 		Calendar calendar=Calendar.getInstance();
 		calendar.setTime(date);
@@ -119,9 +124,9 @@ public class TimeTools {
 
 	/**
 	 *   @desc : 获取向前/向后offSet天的最大时间
-	 *   @auth : TYF
-	 *   @date : 2019-12-03 - 16:08
-	 */
+	 *   @auth : tyf
+	 *   @date : 2026-03-20 14:04:14
+	*/
 	public static Long getMillisecondEndOfDayWithOFFset(Date date, Integer offSet){
 		Calendar calendar=Calendar.getInstance();
 		calendar.setTime(date);
@@ -132,9 +137,9 @@ public class TimeTools {
 
 
 	/**
-	*   @desc : 获得某月的最小时间 2019-10-1 00:00:00
-	*   @auth : TYF
-	*   @date : 2019-12-03 - 15:47
+	 *   @desc : 获得某月的最小时间
+	 *   @auth : tyf
+	 *   @date : 2026-03-20 14:04:14
 	*/
 	public static Long getMillisecondStartOfMonth(Date date){
 		LocalDate today = date.toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
@@ -143,10 +148,10 @@ public class TimeTools {
 	}
 
 	/**
-	 *   @desc : 获得某月的最大时间 2019-10-31 23:59:59
-	 *   @auth : TYF
-	 *   @date : 2019-12-03 - 15:47
-	 */
+	 *   @desc : 获得某月的最大时间
+	 *   @auth : tyf
+	 *   @date : 2026-03-20 14:04:14
+	*/
 	public static Long getMillisecondEndOfMonth(Date date){
 		LocalDate today = date.toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
 		LocalDate lastDay =today.with(TemporalAdjusters.lastDayOfMonth());
@@ -155,9 +160,9 @@ public class TimeTools {
 
 
 	/**
-	*   @desc : 获取向前/向后offSet个月的最小时间
-	*   @auth : TYF
-	*   @date : 2019-12-03 - 16:08
+	 *   @desc : 获取向前/向后offSet个月的最小时间
+	 *   @auth : tyf
+	 *   @date : 2026-03-20 14:04:14
 	*/
 	public static Long getMillisecondStartOfMonthWithOFFset(Date date,Integer offSet){
 		Calendar calendar=Calendar.getInstance();
@@ -170,9 +175,9 @@ public class TimeTools {
 
 	/**
 	 *   @desc : 获取向前/向后offSet个月的最大时间
-	 *   @auth : TYF
-	 *   @date : 2019-12-03 - 16:08
-	 */
+	 *   @auth : tyf
+	 *   @date : 2026-03-20 14:04:14
+	*/
 	public static Long getMillisecondEndOfMonthWithOFFset(Date date,Integer offSet){
 		Calendar calendar=Calendar.getInstance();
 		calendar.setTime(date);
@@ -183,9 +188,9 @@ public class TimeTools {
 
 	/**
 	 *   @desc : 时间字符串转时间戳
-	 *   @auth : TYF
-	 *   @date : 2020-01-09 - 9:07
-	 */
+	 *   @auth : tyf
+	 *   @date : 2026-03-20 14:04:14
+	*/
 	public static Long timeStrToTimeStemp(String timeStr,Integer index){
 		SimpleDateFormat format =  new SimpleDateFormat(formatArray[index]);
 		Date date = null;
@@ -201,9 +206,9 @@ public class TimeTools {
 
 	/**
 	 *   @desc : 时间字符串转date
-	 *   @auth : TYF
-	 *   @date : 2020-01-09 - 9:07
-	 */
+	 *   @auth : tyf
+	 *   @date : 2026-03-20 14:04:14
+	*/
 	public static Date timeStrToDate(String timeStr, Integer index){
 		SimpleDateFormat format =  new SimpleDateFormat(formatArray[index]);
 		Date date = null;

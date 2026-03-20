@@ -16,12 +16,16 @@ import java.util.function.Consumer;
 /**
  *   @desc : 应用初始化
  *   @auth : tyf
- *   @date : 2025-12-03 14:49:36
+ *   @date : 2026-03-20 14:04:14
 */
 public class InitService {
 
 
-    // 工作目录初始化
+    /**
+     *   @desc : 工作目录初始化
+     *   @auth : tyf
+     *   @date : 2026-03-20 14:04:14
+    */
     public static void initWorkSpace(){
         File wk = new File(ConstService.WORKSPACE);
         System.out.println("工作目录地址："+wk.getAbsolutePath());
@@ -31,7 +35,11 @@ public class InitService {
     }
 
 
-    // 日志初始化
+    /**
+     *   @desc : 日志初始化
+     *   @auth : tyf
+     *   @date : 2026-03-20 14:04:14
+    */
     public static void initLog(){
         // 初始化日志文件,清除3天以外的日志文件
         LogService.log_file = ConstService.LOG_DIR + TimeTools.timeStempToTimeStr(System.currentTimeMillis(),11) +".log";
@@ -41,7 +49,11 @@ public class InitService {
     }
 
 
-    // scrcpy-server.jar 初始化
+    /**
+     *   @desc : scrcpy-server.jar 初始化
+     *   @auth : tyf
+     *   @date : 2026-03-20 14:04:14
+    */
     public static void initScrcpyServer() {
         try {
             ScrcpyService.initLocalServerJar();
@@ -50,7 +62,11 @@ public class InitService {
         }
     }
 
-    // adb 命令行初始化
+    /**
+     *   @desc : adb 命令行初始化
+     *   @auth : tyf
+     *   @date : 2026-03-20 14:04:14
+    */
     public static void initAdb() {
         // 避免并发重复解压
         synchronized (InitService.class) {
@@ -114,7 +130,11 @@ public class InitService {
     }
 
 
-    // 开始启动初始化
+    /**
+     *   @desc : 开始启动初始化
+     *   @auth : tyf
+     *   @date : 2026-03-20 14:04:14
+    */
     public static void init(Consumer<Integer> progress,Consumer<Void> finish){
 
         ExecutorsTools.initThread.execute(()->{

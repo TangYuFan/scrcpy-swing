@@ -9,7 +9,11 @@ import java.awt.event.*;
 
 public class GuiTools {
 
-    // 创建一个超链接
+    /**
+     *   @desc : 创建超链接
+     *   @auth : tyf
+     *   @date : 2026-03-20 14:04:14
+    */
     public static JLabel createLinkLabel(String text, Font font, Color color) {
         JLabel label = new JLabel("<html><a href='' style='color:rgb(" +
                 color.getRed() + "," + color.getGreen() + "," + color.getBlue() + ");'>" +
@@ -20,6 +24,11 @@ public class GuiTools {
     }
 
 
+    /**
+     *   @desc : 创建无下划线超链接
+     *   @auth : tyf
+     *   @date : 2026-03-20 14:04:14
+    */
     public static JLabel createLinkLabelNoUnderline(String text, Font font, Color color) {
         JLabel label = new JLabel("<html><a href='' style='text-decoration:none; color:rgb(" +
                 color.getRed() + "," + color.getGreen() + "," + color.getBlue() + ");'>" +
@@ -30,7 +39,11 @@ public class GuiTools {
     }
 
 
-    // 弹出加载框
+    /**
+     *   @desc : 弹出加载框
+     *   @auth : tyf
+     *   @date : 2026-03-20 14:04:14
+    */
     public static JDialog showLoading(String text, Component parent) {
         Window owner = SwingUtilities.getWindowAncestor(parent);
 

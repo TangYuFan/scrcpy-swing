@@ -10,10 +10,10 @@ import java.awt.geom.RoundRectangle2D;
 import java.util.function.Consumer;
 
 /**
- * @desc 初始化进度窗口
- * @auth tyf
- * @date 2025-10-22
- */
+ *   @desc : 初始化进度窗口
+ *   @auth : tyf
+ *   @date : 2026-03-20 14:04:14
+*/
 public class InitPanel extends JDialog {
 
     private final JProgressBar progressBar;
@@ -74,7 +74,11 @@ public class InitPanel extends JDialog {
         setShape(new RoundRectangle2D.Double(0, 0, getWidth(), getHeight(), arc, arc));
     }
 
-    /** 更新进度（不带百分比文字） */
+    /**
+     *   @desc : 更新进度（不带百分比文字）
+     *   @auth : tyf
+     *   @date : 2026-03-20 14:04:14
+    */
     public void updateProgress(int value, String message) {
         SwingUtilities.invokeLater(() -> {
             progressBar.setValue(value);
@@ -84,12 +88,20 @@ public class InitPanel extends JDialog {
         });
     }
 
-    /** 完成后自动关闭 */
+    /**
+     *   @desc : 完成后自动关闭
+     *   @auth : tyf
+     *   @date : 2026-03-20 14:04:14
+    */
     public void finish() {
         SwingUtilities.invokeLater(this::dispose);
     }
 
-    /** 模拟任务 */
+    /**
+     *   @desc : 模拟任务
+     *   @auth : tyf
+     *   @date : 2026-03-20 14:04:14
+    */
     public void start() {
 
         // 任务执行进度

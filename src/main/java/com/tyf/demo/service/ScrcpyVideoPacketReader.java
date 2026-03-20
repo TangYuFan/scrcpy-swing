@@ -9,9 +9,10 @@ import java.io.PushbackInputStream;
 import java.nio.charset.StandardCharsets;
 
 /**
- * Reads scrcpy video socket: dummy, device meta, codec header, then framed packets (12-byte meta + payload).
- * Merges config NALs with the following media packet (QtScrcpy / scrcpy client behavior).
- */
+ *   @desc : Scrcpy 视频包读取器
+ *   @auth : tyf
+ *   @date : 2026-03-20 14:04:14
+*/
 final class ScrcpyVideoPacketReader implements AutoCloseable {
 
     private static final int DEVICE_NAME_LEN = 64;
@@ -85,8 +86,10 @@ final class ScrcpyVideoPacketReader implements AutoCloseable {
     }
 
     /**
-     * Next media access unit (config prepended when applicable). Blocks until one full packet arrives.
-     */
+     *   @desc : 读取下一个媒体数据包
+     *   @auth : tyf
+     *   @date : 2026-03-20 14:04:14
+    */
     byte[] nextMediaPacket() throws IOException {
         while (true) {
             byte[] header = readExactly(HEADER_LEN);
@@ -188,6 +191,11 @@ final class ScrcpyVideoPacketReader implements AutoCloseable {
                 | ((long) (b[off + 7] & 0xFF));
     }
 
+    /**
+     *   @desc : 关闭资源
+     *   @auth : tyf
+     *   @date : 2026-03-20 14:04:14
+    */
     @Override
     public void close() {
         try {

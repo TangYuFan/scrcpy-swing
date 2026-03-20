@@ -10,9 +10,9 @@ import java.io.File;
 import java.util.Arrays;
 
 /**
-*   @desc : 日志工具类
-*   @auth : tyf
-*   @date : 2023-09-21  11:33:50
+ *   @desc : 日志工具类
+ *   @auth : tyf
+ *   @date : 2026-03-20 14:04:14
 */
 public class LogService {
 
@@ -20,7 +20,11 @@ public class LogService {
     // 当前日志文件
     public static String log_file = null;
 
-    // 创建日志目录
+    /**
+     *   @desc : 创建日志目录
+     *   @auth : tyf
+     *   @date : 2026-03-20 14:04:14
+    */
     public static void createLogDirectory(String directory){
         File d = new File(directory);
         System.out.println("日志文件目录："+d.getAbsolutePath());
@@ -29,7 +33,11 @@ public class LogService {
         }
     }
 
-    // 创建日志文件
+    /**
+     *   @desc : 创建日志文件
+     *   @auth : tyf
+     *   @date : 2026-03-20 14:04:14
+    */
     public static void createLog(){
         File log = new File(log_file);
         System.out.println("日志文件路径："+log.getAbsolutePath());
@@ -63,7 +71,11 @@ public class LogService {
     }
 
 
-    // 默认清除三天以外的日志文件
+    /**
+     *   @desc : 默认清除三天以外的日志文件
+     *   @auth : tyf
+     *   @date : 2026-03-20 14:04:14
+    */
     public static void clearLog(String directory){
         // 仅保留3天
         long old = 5;

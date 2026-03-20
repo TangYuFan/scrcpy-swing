@@ -6,9 +6,9 @@ import org.pmw.tinylog.Logger;
 import javax.swing.*;
 
 /**
-*   @desc : 应用入口
-*   @auth : tyf
-*   @date : 2023-07-21  15:35:42
+ *   @desc : 应用入口
+ *   @auth : tyf
+ *   @date : 2026-03-20 14:04:14
 */
 public class Main {
 
@@ -17,7 +17,11 @@ public class Main {
         com.formdev.flatlaf.FlatLightLaf.setup(); // 平光
     }
 
-    // 启动主窗体
+    /**
+     *   @desc : 启动主窗体
+     *   @auth : tyf
+     *   @date : 2026-03-20 14:04:14
+    */
     public static void initMainPanel(){
 
         Logger.info("init ..");
@@ -36,7 +40,6 @@ public class Main {
 
 
     public static void main(String[] args){
-        // 启动主窗体
         initMainPanel();
     }
 

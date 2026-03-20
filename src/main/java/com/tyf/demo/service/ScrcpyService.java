@@ -3,6 +3,7 @@ package com.tyf.demo.service;
 import com.tyf.demo.entity.Device;
 import com.tyf.demo.gui.MainPanel;
 import com.tyf.demo.util.CmdTools;
+import com.tyf.demo.util.ExecutorsTools;
 import org.pmw.tinylog.Logger;
 
 import java.io.File;
@@ -17,16 +18,10 @@ import java.util.concurrent.atomic.AtomicReference;
 
 
 /**
- * Scrcpy 服务端运行器 + 视频接收器（PC 端纯 Java 实现）。
- * <p>
- * <b>与 QtScrcpy / 官方 scrcpy 的差异（为何本方案延迟较大）：</b>
- * <ul>
- *   <li>QtScrcpy：进程内链接 libavcodec，Demuxer 独立线程读 socket，解码后 YUV 走 OpenGL，无「每帧 8MB BGR 管道」。</li>
- *   <li>官方 scrcpy：Rust/SDL，同样进程内解码 + 纹理，延迟极低。</li>
- *   <li>本工程：使用 JavaCPP（JavaCV 底层）进程内 FFmpeg 解码，最终仍需要把帧转换为 BGR 并交给 Swing 绘制。</li>
- * </ul>
- * 缓解手段：设备端 {@link ConstService#SCRCPY_MAX_SIZE} 降分辨率、必要时丢帧/降帧率、以及优化 Swing 侧绘制与拷贝。
- */
+ *   @desc : Scrcpy 服务端运行器
+ *   @auth : tyf
+ *   @date : 2026-03-20 14:04:14
+*/
 public final class ScrcpyService {
 
     /** 标记 scrcpy 是否正在运行 */
@@ -35,6 +30,10 @@ public final class ScrcpyService {
 
     /** 长时间运行的「adb shell … app_process」子进程，必须在退出时 destroy，否则会占用 adb.exe。 */
     private static final AtomicReference<Process> scrcpyAdbShell = new AtomicReference<>();
+    /** 当前 socket 连接，用于 shutdown 时强制关闭 */
+    private static final AtomicReference<Socket> currentSocket = new AtomicReference<>();
+    /** 当前 packet reader，用于 shutdown 时关闭流 */
+    private static final AtomicReference<ScrcpyVideoPacketReader> currentReader = new AtomicReference<>();
 
     private static volatile String activeDeviceId;
 
@@ -44,21 +43,20 @@ public final class ScrcpyService {
 
     private ScrcpyService() {}
 
+    /**
+     *   @desc : 初始化本地 scrcpy server jar
+     *   @auth : tyf
+     *   @date : 2026-03-20 14:04:14
+    */
     public static File initLocalServerJar() throws Exception {
         return extractServerJar(true);
     }
 
     /**
-     * 启动 scrcpy 投屏服务。
-     * 完整流程：
-     * 1. 确保本地 scrcpy-server.jar 已提取
-     * 2. 通过 adb push 将 jar 推送到手机
-     * 3. 建立 adb forward 端口转发
-     * 4. 在手机上启动 scrcpy-server（后台进程）
-     * 5. 建立 socket 连接并开始接收/解码视频流
-     *
-     * @param device 要投屏的设备
-     */
+     *   @desc : 启动 scrcpy 投屏服务
+     *   @auth : tyf
+     *   @date : 2026-03-20 14:04:14
+    */
     public static void start(Device device) throws Exception {
         if (!running.compareAndSet(false, true)) {
             Logger.info("scrcpy 已在运行中，跳过启动");
@@ -73,8 +71,22 @@ public final class ScrcpyService {
             // 步骤 1：确保本地 scrcpy-server.jar 已存在（若不存在则从 resources 提取）
             File localJar = extractServerJar(false);
 
-            // 步骤 2：将 scrcpy-server.jar 推送到手机（adb push <本地路径> <手机路径>）
-            adb(deviceId, "push \"" + localJar.getAbsolutePath() + "\" " + ConstService.SCRCPY_DEVICE_SERVER_PATH);
+            // 步骤 1.5：清理手机上残留的 scrcpy server 进程
+            adbQuiet(deviceId, "shell am force-stop com.genymobile.scrcpy");
+            Thread.sleep(200);
+
+            // 步骤 2：将 scrcpy-server.jar 推送到手机（带重试）
+            int pushRetries = 3;
+            for (int i = 0; i < pushRetries; i++) {
+                try {
+                    adb(deviceId, "push \"" + localJar.getAbsolutePath() + "\" " + ConstService.SCRCPY_DEVICE_SERVER_PATH);
+                    break;
+                } catch (Exception e) {
+                    if (i == pushRetries - 1) throw e;
+                    Logger.info("adb push 失败，重试 " + (i + 1) + "/" + pushRetries);
+                    Thread.sleep(1000);
+                }
+            }
 
             // 步骤 3：建立 adb 端口转发
             // 将本地 TCP 端口转发到手机的 localabstract:scrcpy
@@ -82,6 +94,10 @@ public final class ScrcpyService {
             // 先移除旧的转发，避免半开连接或错误的对端
             adbQuiet(deviceId, "forward --remove tcp:" + ConstService.SCRCPY_VIDEO_FORWARD_PORT);
             adb(deviceId, "forward tcp:" + ConstService.SCRCPY_VIDEO_FORWARD_PORT + " localabstract:scrcpy");
+
+            // 步骤 3.5：杀死手机上可能还在运行的 scrcpy-server
+            adbQuiet(deviceId, "shell am force-stop com.genymobile.scrcpy");
+            Thread.sleep(200);
 
             // 步骤 4：启动手机上的 scrcpy-server（后台异步执行）
             // 命令格式：shell CLASSPATH=<jar路径> app_process / <启动类>
@@ -133,26 +149,40 @@ public final class ScrcpyService {
     }
 
     /**
-     * 关闭 scrcpy 投屏服务，释放所有资源。
-     * 在窗口关闭、JVM 关闭时调用；可重复调用。
-     * 清理内容：销毁 adb shell 子进程、移除 adb 端口转发、杀死本地 adb server
-     */
+     *   @desc : 关闭 scrcpy 投屏服务
+     *   @auth : tyf
+     *   @date : 2026-03-20 14:04:14
+    */
     public static void shutdown() {
         // 1. 销毁 adb shell 子进程
         Process p = scrcpyAdbShell.getAndSet(null);
         destroyQuietly(p);
 
-        // 2. 移除端口转发
+        // 2. 强制关闭 socket（打断 decodeLoop 的阻塞读取）
+        Socket sock = currentSocket.getAndSet(null);
+        if (sock != null) {
+            try {
+                sock.close();
+            } catch (Exception ignore) {}
+        }
+
+        // 3. 关闭 packet reader
+        ScrcpyVideoPacketReader r = currentReader.getAndSet(null);
+        if (r != null) {
+            try {
+                r.close();
+            } catch (Exception ignore) {}
+        }
+
+        // 4. 移除端口转发
         String deviceId = activeDeviceId;
         activeDeviceId = null;
         if (deviceId != null && !deviceId.trim().isEmpty()) {
             adbQuiet(deviceId, "forward --remove tcp:" + ConstService.SCRCPY_VIDEO_FORWARD_PORT);
         }
 
-        // 3. 杀死本地 adb server，释放文件占用
-        try {
-            CmdTools.exec(adbCmd(null) + " kill-server");
-        } catch (Exception ignore) {}
+        // 5. 关闭线程池
+        ExecutorsTools.shutdown();
 
         running.set(false);
     }
@@ -194,6 +224,11 @@ public final class ScrcpyService {
         }
     }
 
+    /**
+     *   @desc : 启动解码线程
+     *   @auth : tyf
+     *   @date : 2026-03-20 14:04:14
+    */
     private static void startDecodeThread() {
         if (!decoderRunning.compareAndSet(false, true)) {
             return;
@@ -212,18 +247,10 @@ public final class ScrcpyService {
     }
 
     /**
-     * 解码循环：连接 socket → 读取视频流 → 解码 → 渲染。
-     *
-     * 连接策略（tunnel_forward 模式）：
-     * - 手机创建 LocalServerSocket("scrcpy") 监听
-     * - PC 主动连接
-     * - 由于时序问题，PC 可能先于手机 accept，导致 EOF
-     * - 解决方案：重试连接 + 读取，直到成功读取视频头
-     *
-     * 视频流结构：
-     * 1. 头部：设备信息、编码器参数、视频分辨率
-     * 2. 数据包：H.264 编码的帧数据（包含元数据）
-     */
+     *   @desc : 解码循环
+     *   @auth : tyf
+     *   @date : 2026-03-20 14:04:14
+    */
     private static void decodeLoop() throws Exception {
         // 等待手机上的 scrcpy-server 启动完成
         Thread.sleep(400);
@@ -266,6 +293,10 @@ public final class ScrcpyService {
                 Thread.sleep(retryGapMs);
             }
         }
+
+        // 记录 socket 和 reader 引用，供 shutdown() 使用
+        currentSocket.set(s);
+        currentReader.set(reader);
 
         // 连接失败，抛出异常
         if (!headerOk) {
@@ -344,16 +375,17 @@ public final class ScrcpyService {
                     }
                 }
             }
+            // 清理引用
+            currentSocket.set(null);
+            currentReader.set(null);
         }
     }
 
     /**
-     * 从 resources 提取 scrcpy-server.jar 到本地工作目录。
-     * forceRewrite=true 时强制重新提取，forceRewrite=false 时仅当文件不存在时提取
-     *
-     * @param forceRewrite 是否强制重新提取
-     * @return 提取后的 jar 文件
-     */
+     *   @desc : 提取 scrcpy-server.jar
+     *   @auth : tyf
+     *   @date : 2026-03-20 14:04:14
+    */
     private static File extractServerJar(boolean forceRewrite) throws Exception {
         File dir = new File(ConstService.WORKSPACE, "scrcpy");
         if (!dir.exists()) {
@@ -385,8 +417,10 @@ public final class ScrcpyService {
     }
 
     /**
-     * 执行 adb 命令（带日志记录）
-     */
+     *   @desc : 执行 adb 命令（带日志记录）
+     *   @auth : tyf
+     *   @date : 2026-03-20 14:04:14
+    */
     private static void adb(String deviceId, String args) {
         String cmd = adbCmd(deviceId) + " " + args;
         Logger.info(cmd);
@@ -397,16 +431,20 @@ public final class ScrcpyService {
     }
 
     /**
-     * 执行 adb 命令（静默模式，忽略执行结果）。用于清理操作
-     */
+     *   @desc : 执行 adb 命令（静默模式）
+     *   @auth : tyf
+     *   @date : 2026-03-20 14:04:14
+    */
     private static void adbQuiet(String deviceId, String args) {
         String cmd = adbCmd(deviceId) + " " + args;
         CmdTools.exec(cmd);
     }
 
     /**
-     * 构造 adb 命令
-     */
+     *   @desc : 构造 adb 命令
+     *   @auth : tyf
+     *   @date : 2026-03-20 14:04:14
+    */
     private static String adbCmd(String deviceId) {
         String adb = ConstService.ADB_PATH + "adb.exe";
         if (deviceId == null || deviceId.trim().isEmpty()) {

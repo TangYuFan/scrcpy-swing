@@ -12,10 +12,10 @@ import java.util.function.Consumer;
 public class CmdTools {
 
     /**
-     * 执行系统命令，返回输出结果（支持 Windows，无乱码）
-     * @param cmd 要执行的命令
-     * @return 命令执行结果字符串
-     */
+     *   @desc : 执行系统命令
+     *   @auth : tyf
+     *   @date : 2026-03-20 14:04:14
+    */
     public static String exec(String cmd) {
         StringBuilder result = new StringBuilder();
         Process process = null;
@@ -51,10 +51,10 @@ public class CmdTools {
 
 
     /**
-     * 启动后台进程并在独立线程中耗尽 stdout/stderr，避免管道缓冲区塞满导致子进程阻塞。
-     *
-     * @return 子进程句柄，必须由调用方在适当时机 {@link Process#destroy()}（例如应用退出时），否则 Windows 上可能长期占用 adb.exe。
-     */
+     *   @desc : 启动后台进程
+     *   @auth : tyf
+     *   @date : 2026-03-20 14:04:14
+    */
     public static Process startBackgroundProcess(String cmd) throws IOException {
         Process mobileProcess = Runtime.getRuntime().exec(cmd);
         drainLinesAsync(mobileProcess.getInputStream(), false, "adb-bg-out");
@@ -92,7 +92,11 @@ public class CmdTools {
     }
 
 
-    // 启动一个进程，如果输出退出关键字，则主动关闭进程
+    /**
+     *   @desc : 启动进程并监听关键字
+     *   @auth : tyf
+     *   @date : 2026-03-20 14:04:14
+    */
     public static void startProcess(String cmd, String exitKey, String successKey, Consumer<Boolean> callback){
         try {
             // 启动进程，并保存到静态变量
@@ -130,7 +134,11 @@ public class CmdTools {
     }
 
 
-    // 同步启动，如果输出退出关键字，则主动关闭进程
+    /**
+     *   @desc : 同步启动进程
+     *   @auth : tyf
+     *   @date : 2026-03-20 14:04:14
+    */
     public static void startProcessSync(String cmd,String exitKey){
         try {
             // 启动进程，并保存到静态变量

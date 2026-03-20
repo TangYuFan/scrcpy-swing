@@ -17,8 +17,10 @@ import org.bytedeco.ffmpeg.avutil.AVFrame;
 import org.bytedeco.ffmpeg.swscale.SwsContext;
 
 /**
- * H.264 decode via libavcodec (same idea as QtScrcpyCore), not {@code FFmpegFrameGrabber}.
- */
+ *   @desc : H.264 解码器
+ *   @auth : tyf
+ *   @date : 2026-03-20 14:04:14
+*/
 final class ScrcpyH264Decoder implements AutoCloseable {
 
     private static final Object NATIVE_INIT = new Object();
@@ -254,8 +256,9 @@ final class ScrcpyH264Decoder implements AutoCloseable {
     private static byte[] copyBgrToPacked(BytePointer src, int stride, int w, int h) {
         int need = w * h * 3;
         byte[] dst = new byte[need];
+        int rowBytes = Math.min(stride, w * 3);
         for (int y = 0; y < h; y++) {
-            src.position((long) y * stride).get(dst, y * w * 3, w * 3);
+            src.position((long) y * stride).get(dst, y * w * 3, rowBytes);
         }
         return dst;
     }
@@ -404,6 +407,11 @@ final class ScrcpyH264Decoder implements AutoCloseable {
         return sb.toString();
     }
 
+    /**
+     *   @desc : 关闭资源
+     *   @auth : tyf
+     *   @date : 2026-03-20 14:04:14
+    */
     @Override
     public void close() {
         freeAll();

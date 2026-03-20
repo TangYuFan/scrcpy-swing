@@ -12,7 +12,7 @@ import java.awt.event.WindowEvent;
 /**
  *   @desc : 主窗体入口
  *   @auth : tyf
- *   @date : 2025-12-03 14:46:02
+ *   @date : 2026-03-20 14:04:14
 */
 public class MainFrame extends JFrame {
 
@@ -21,7 +21,13 @@ public class MainFrame extends JFrame {
     public MainFrame() {
 
         setTitle(ConstService.MAIN_TITLE);
-        setMaximumSize(new Dimension(ConstService.MAIN_WIDTH, ConstService.MAIN_HEIGHT));
+        // 设置最大窗口尺寸（0 = 不限制）
+        if (ConstService.MAX_WINDOW_WIDTH > 0 || ConstService.MAX_WINDOW_HEIGHT > 0) {
+            setMaximumSize(new Dimension(
+                ConstService.MAX_WINDOW_WIDTH > 0 ? ConstService.MAX_WINDOW_WIDTH : Integer.MAX_VALUE,
+                ConstService.MAX_WINDOW_HEIGHT > 0 ? ConstService.MAX_WINDOW_HEIGHT : Integer.MAX_VALUE
+            ));
+        }
         setLocationRelativeTo(null);     // 居中
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setIconImage(((ImageIcon) ConstService.MAIN_ICON).getImage());  // 图标
@@ -41,7 +47,63 @@ public class MainFrame extends JFrame {
         });
     }
 
+    /**
+     *   @desc : 获取主窗体实例
+     *   @auth : tyf
+     *   @date : 2026-03-20 14:04:14
+    */
     public static MainFrame getMainFrame() {
         return mainFrame;
+    }
+
+    /**
+     *   @desc : 横竖屏切换时调整窗口大小
+     *   @auth : tyf
+     *   @date : 2026-03-20 14:04:14
+     *   @param w 视频宽度
+     *   @param h 视频高度
+     */
+    public static void resizeForContent(int w, int h) {
+        if (mainFrame == null || w <= 0 || h <= 0) {
+            return;
+        }
+        SwingUtilities.invokeLater(() -> {
+            Insets insets = mainFrame.getInsets();
+            Dimension currentSize = mainFrame.getSize();
+            Dimension currentContent = mainFrame.getContentPane().getSize();
+
+            // 根据横竖屏确定目标内容尺寸（固定值，不跟随手机分辨率）
+            int targetContentW, targetContentH;
+            if (w > h) {
+                // 横屏
+                targetContentW = ConstService.MAIN_HEIGHT;
+                targetContentH = ConstService.MAIN_WIDTH;
+            } else {
+                // 竖屏
+                targetContentW = ConstService.MAIN_WIDTH;
+                targetContentH = ConstService.MAIN_HEIGHT;
+            }
+
+            // 如果内容区尺寸没变化则跳过
+            if (currentContent.width == targetContentW && currentContent.height == targetContentH) {
+                return;
+            }
+
+            int newWindowW = targetContentW + insets.left + insets.right;
+            int newWindowH = targetContentH + insets.top + insets.bottom;
+
+            // 限制最大尺寸
+            Dimension maxSize = mainFrame.getMaximumSize();
+            if (maxSize.width > 0) newWindowW = Math.min(newWindowW, maxSize.width);
+            if (maxSize.height > 0) newWindowH = Math.min(newWindowH, maxSize.height);
+
+            if (currentSize.width == newWindowW && currentSize.height == newWindowH) return;
+
+            // 保持窗口居中
+            Point center = mainFrame.getLocation();
+            mainFrame.setSize(newWindowW, newWindowH);
+            mainFrame.setLocation(center.x + (currentSize.width - newWindowW) / 2, 
+                                   center.y + (currentSize.height - newWindowH) / 2);
+        });
     }
 }

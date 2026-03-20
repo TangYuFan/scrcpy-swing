@@ -3,7 +3,11 @@ package com.tyf.demo.entity;
 import javax.swing.*;
 import java.awt.*;
 
-// 编辑按钮（处理点击事件）
+/**
+ *   @desc : 按钮编辑器
+ *   @auth : tyf
+ *   @date : 2026-03-20 14:04:14
+*/
 public class ButtonEditor extends DefaultCellEditor {
     private JButton button;
     private String label;
@@ -26,6 +30,11 @@ public class ButtonEditor extends DefaultCellEditor {
         button.setBorderPainted(true);
     }
 
+    /**
+     *   @desc : 获取单元格编辑器组件
+     *   @auth : tyf
+     *   @date : 2026-03-20 14:04:14
+    */
     @Override
     public Component getTableCellEditorComponent(JTable table, Object value,
                                                  boolean isSelected, int row, int column) {
@@ -36,6 +45,11 @@ public class ButtonEditor extends DefaultCellEditor {
         return button;
     }
 
+    /**
+     *   @desc : 获取单元格编辑器值
+     *   @auth : tyf
+     *   @date : 2026-03-20 14:04:14
+    */
     @Override
     public Object getCellEditorValue() {
         if (clicked) {
@@ -51,6 +65,11 @@ public class ButtonEditor extends DefaultCellEditor {
         return label;
     }
 
+    /**
+     *   @desc : 停止单元格编辑
+     *   @auth : tyf
+     *   @date : 2026-03-20 14:04:14
+    */
     @Override
     public boolean stopCellEditing() {
         clicked = false;
@@ -58,7 +77,11 @@ public class ButtonEditor extends DefaultCellEditor {
     }
 
 
-    // 定义点击回调接口
+    /**
+     *   @desc : 按钮点击回调接口
+     *   @auth : tyf
+     *   @date : 2026-03-20 14:04:14
+    */
     public interface OnButtonClick {
         void onClick(Device device);
     }

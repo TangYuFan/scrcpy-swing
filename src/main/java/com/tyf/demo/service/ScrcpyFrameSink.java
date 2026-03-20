@@ -1,8 +1,10 @@
 package com.tyf.demo.service;
 
 /**
- * 一帧 BGR 像素（紧密排列，长度 w*h*3），供 JavaCV 或 FFmpeg 管道解码后回传 UI。
- */
+ *   @desc : Scrcpy 帧回调接口
+ *   @auth : tyf
+ *   @date : 2026-03-20 14:04:14
+*/
 @FunctionalInterface
 public interface ScrcpyFrameSink {
     void onPackedBgr(byte[] packedBgr, int w, int h);

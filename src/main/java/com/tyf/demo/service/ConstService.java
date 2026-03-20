@@ -9,8 +9,8 @@ import java.awt.*;
 /**
  *   @desc : 常量类
  *   @auth : tyf
- *   @date : 2025-12-03 14:43:31
- */
+ *   @date : 2026-03-20 14:04:14
+*/
 public final class ConstService {
 
     // ================================================================
@@ -51,6 +51,12 @@ public final class ConstService {
     public static final Icon MAIN_ICON = IconsTools.app;    // 主窗体图标
     public static final int MAIN_WIDTH = 420;     // 主窗体宽
     public static final int MAIN_HEIGHT = 800;    // 主窗体高
+    /** 是否启用窗口自动适应手机分辨率（去掉黑边） */
+    public static final boolean AUTO_RESIZE_WINDOW = true;
+    /** 窗口最大宽度（0 = 不限制） */
+    public static final int MAX_WINDOW_WIDTH = 0;
+    /** 窗口最大高度（0 = 不限制） */
+    public static final int MAX_WINDOW_HEIGHT = 0;
 
 
     public static final String DEFAULT_FONT_NAME = "微软雅黑";
