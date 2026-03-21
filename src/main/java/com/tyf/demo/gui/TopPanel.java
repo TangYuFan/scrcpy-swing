@@ -44,10 +44,10 @@ public class TopPanel extends JPanel {
         JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 2));
         rightPanel.setOpaque(false);
 
-        JLabel swi = GuiTools.createLinkLabel("switch", ConstService.FONT_NORMAL, ConstService.COLOR_BLACK);
-        JLabel readme = GuiTools.createLinkLabel("info", ConstService.FONT_NORMAL, ConstService.COLOR_BLACK);
-        JLabel log = GuiTools.createLinkLabel("log", ConstService.FONT_NORMAL, ConstService.COLOR_BLACK);
-        JLabel mlog = GuiTools.createLinkLabel("mlog", ConstService.FONT_NORMAL, ConstService.COLOR_BLACK);
+        JLabel swi = GuiTools.createLinkLabel("Switch", ConstService.FONT_NORMAL, ConstService.COLOR_BLACK);
+        JLabel readme = GuiTools.createLinkLabel("Info", ConstService.FONT_NORMAL, ConstService.COLOR_BLACK);
+        JLabel log = GuiTools.createLinkLabel("Log", ConstService.FONT_NORMAL, ConstService.COLOR_BLACK);
+        JLabel mlog = GuiTools.createLinkLabel("MLog", ConstService.FONT_NORMAL, ConstService.COLOR_BLACK);
 
 
         // 打开日志路径
@@ -112,13 +112,13 @@ public class TopPanel extends JPanel {
                 textArea.setBackground(new Color(250, 250, 250));
 
                 JScrollPane scrollPane = new JScrollPane(textArea);
-                scrollPane.setPreferredSize(new Dimension(420, 450));
+                scrollPane.setPreferredSize(new Dimension(360, 400));
 
                 JOptionPane.showMessageDialog(
                         MainFrame.getMainFrame(),
                         scrollPane,
-                        "快捷键说明",
-                        JOptionPane.INFORMATION_MESSAGE
+                        "Keyboard Shortcuts",
+                        JOptionPane.PLAIN_MESSAGE
                 );
             }
         });
@@ -144,7 +144,7 @@ public class TopPanel extends JPanel {
                 JScrollPane scrollPane = new JScrollPane(table);
                 // 创建 popup
                 JFrame owner = MainFrame.getMainFrame(); // 直接用主窗口
-                popup = new JDialog(owner, "devices");
+                popup = new JDialog(owner, "Devices");
                 popup.setSize(300, 180);
                 popup.setLayout(new BorderLayout());
                 popup.add(scrollPane, BorderLayout.CENTER);
@@ -219,8 +219,8 @@ public class TopPanel extends JPanel {
                 if (deviceId == null || deviceId.trim().isEmpty()) {
                     JOptionPane.showMessageDialog(
                             MainFrame.getMainFrame(),
-                            "select device first",
-                            "alert",
+                            "Select Device First",
+                            "Alert",
                             JOptionPane.INFORMATION_MESSAGE
                     );
                     return;

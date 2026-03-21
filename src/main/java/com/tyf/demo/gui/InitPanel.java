@@ -49,8 +49,8 @@ public class InitPanel extends JDialog {
         content.setOpaque(false);
         content.setBorder(BorderFactory.createEmptyBorder(10, 25, 20, 25));
 
-        // 状态文字
-        statusLabel = new JLabel("初始化中...", SwingConstants.CENTER);
+        // Status text
+        statusLabel = new JLabel("Initializing...", SwingConstants.CENTER);
         statusLabel.setFont(ConstService.FONT_SMALL);
 
         // 进度条（显示百分比）
@@ -104,9 +104,9 @@ public class InitPanel extends JDialog {
     */
     public void start() {
 
-        // 任务执行进度
+        // Task execution progress
         Consumer<Integer> progress = i ->{
-            updateProgress(i,"初始化...");
+            updateProgress(i,"Initializing...");
         };
 
         // 任务执行完成

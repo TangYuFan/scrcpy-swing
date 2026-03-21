@@ -184,7 +184,7 @@ public final class ControlService {
                     actionButton,
                     buttons
             );
-            Logger.debug("control: sendTouch action=" + action + " x=" + x + " y=" + y + " sw=" + sw + " sh=" + sh);
+//            Logger.debug("control: sendTouch action=" + action + " x=" + x + " y=" + y + " sw=" + sw + " sh=" + sh);
             ch.send(msg);
         } catch (IOException e) {
             Logger.error("control: send touch failed - " + e.getMessage());

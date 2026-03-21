@@ -113,7 +113,8 @@ public class ContentPanel extends JPanel {
                 // Windows 上每次滚动通常返回 1 或 -1（小数表示精确滚动）
                 // 乘以 1.5 使得每次滚动约等于滑动一行，数值越大滚动越快
                 // 注意：scrcpy 协议中 vScroll > 0 表示向上滚动（Android 行为）
-                float vScroll = e.getWheelRotation() * 0.3f;
+                // 负号反转滚轮方向，使向下滚时向下翻页
+                float vScroll = -e.getWheelRotation() * 0.1f;
                 // Logger.debug("control: mouseWheel rotation=" + e.getWheelRotation() + " vScroll=" + vScroll + " point=" + p);
                 ControlService.sendScroll((int) p.getX(), (int) p.getY(), 0, vScroll);
             }
