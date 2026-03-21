@@ -3,7 +3,6 @@ package com.tyf.demo.service;
 import com.tyf.demo.entity.Device;
 import com.tyf.demo.gui.MainPanel;
 import com.tyf.demo.util.CmdTools;
-import com.tyf.demo.util.ExecutorsTools;
 import org.pmw.tinylog.Logger;
 
 import java.io.File;
@@ -39,11 +38,49 @@ public final class ScrcpyService {
 
     private static volatile String activeDeviceId;
 
+    /** 断开监听器，用于通知上层连接异常断开 */
+    private static volatile OnDisconnectListener disconnectListener;
+
     static {
         Runtime.getRuntime().addShutdownHook(new Thread(ScrcpyService::shutdown, "scrcpy-adb-cleanup"));
     }
 
     private ScrcpyService() {}
+
+    /**
+     *   @desc : 设置断开监听器
+     *   @auth : tyf
+     *   @date : 2026-03-21
+     *   @param listener : 断开监听器
+     */
+    public static void setOnDisconnectListener(OnDisconnectListener listener) {
+        ScrcpyService.disconnectListener = listener;
+    }
+
+    /**
+     *   @desc : 断开监听器接口
+     *   @auth : tyf
+     *   @date : 2026-03-21
+     */
+    public interface OnDisconnectListener {
+        /**
+         *   @desc : 连接异常断开时的回调
+         *   @auth : tyf
+         *   @date : 2026-03-21
+         *   @param reason : 断开原因描述
+         */
+        void onDisconnect(String reason);
+    }
+
+    /**
+     *   @desc : 获取当前已连接设备的ID
+     *   @auth : tyf
+     *   @date : 2026-03-21
+     *   @return 当前设备ID，未连接则返回null
+     */
+    public static String getActiveDeviceId() {
+        return activeDeviceId;
+    }
 
     /**
      *   @desc : 初始化本地 scrcpy server jar
@@ -198,9 +235,6 @@ public final class ScrcpyService {
             adbQuiet(deviceId, "forward --remove tcp:" + ConstService.SCRCPY_VIDEO_FORWARD_PORT);
         }
 
-        // 6. 关闭线程池
-        ExecutorsTools.shutdown();
-
         running.set(false);
     }
 
@@ -260,10 +294,29 @@ public final class ScrcpyService {
                 decoderRunning.set(false);
                 running.set(false);
                 decodeThread.set(null);
+                // 触发断开回调，通知上层清理界面
+                notifyDisconnect("video stream closed");
             }
         }, "scrcpy-decode");
         decodeThread.set(t);
         t.start();
+    }
+
+    /**
+     *   @desc : 通知断开监听器
+     *   @auth : tyf
+     *   @date : 2026-03-21
+     *   @param reason : 断开原因
+     */
+    private static void notifyDisconnect(String reason) {
+        OnDisconnectListener listener = disconnectListener;
+        if (listener != null) {
+            try {
+                listener.onDisconnect(reason);
+            } catch (Exception e) {
+                Logger.error("disconnect listener error: " + e);
+            }
+        }
     }
 
     /**

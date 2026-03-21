@@ -8,10 +8,18 @@ import java.awt.*;
  *   @desc : 按钮渲染器
  *   @auth : tyf
  *   @date : 2026-03-20 14:04:14
-*/
+ */
 public class ButtonRenderer extends JButton implements TableCellRenderer {
+
+    /** 绿色文字 - Open按钮 */
+    private static final Color COLOR_GREEN = new Color(34, 139, 34);
+    /** 红色文字 - Close按钮 */
+    private static final Color COLOR_RED = new Color(220, 20, 60);
+
     public ButtonRenderer() {
         setOpaque(true);
+        setBorderPainted(true);
+        setFont(new Font(Font.DIALOG, Font.BOLD, 12));
     }
 
     /**
@@ -23,7 +31,18 @@ public class ButtonRenderer extends JButton implements TableCellRenderer {
     public Component getTableCellRendererComponent(JTable table, Object value,
                                                    boolean isSelected, boolean hasFocus,
                                                    int row, int column) {
-        setText((value == null) ? "" : value.toString());
+        String text = (value == null) ? "" : value.toString();
+        setText(text);
+
+        // 根据按钮文本设置文字颜色
+        if ("Open".equals(text)) {
+            setForeground(COLOR_GREEN);
+        } else if ("Close".equals(text)) {
+            setForeground(COLOR_RED);
+        } else {
+            setForeground(UIManager.getColor("Button.foreground"));
+        }
+
         return this;
     }
 }

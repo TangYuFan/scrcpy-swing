@@ -6,6 +6,7 @@ import com.tyf.demo.entity.Device;
 import com.tyf.demo.entity.DeviceTableModel;
 import com.tyf.demo.service.ConnectService;
 import com.tyf.demo.service.ConstService;
+import com.tyf.demo.service.ScrcpyService;
 import com.tyf.demo.util.DeviceTools;
 import com.tyf.demo.util.GuiTools;
 import org.pmw.tinylog.Logger;
@@ -85,7 +86,9 @@ public class TopPanel extends JPanel {
                 }
                 // 查询当前手机设备
                 List<Device> devices = DeviceTools.listDevices();
-                DeviceTableModel model = new DeviceTableModel(devices);
+                // 获取当前已连接的设备ID
+                String connectedDeviceId = ScrcpyService.getActiveDeviceId();
+                DeviceTableModel model = new DeviceTableModel(devices, connectedDeviceId);
                 JTable table = new JTable(model);
                 table.getColumn("Action").setCellRenderer(new ButtonRenderer());
                 JScrollPane scrollPane = new JScrollPane(table);
@@ -120,10 +123,26 @@ public class TopPanel extends JPanel {
                 };
                 owner.addComponentListener(listener);
                 // 点击事件
-                ButtonEditor be = new ButtonEditor(new JCheckBox(), table, device -> {
-                    Logger.info("Open：" + device.toString());
+                ButtonEditor be = new ButtonEditor(new JCheckBox(), table, (device, isConnected) -> {
                     popup.dispose();
-                    ConnectService.connectDevice(device);
+                    if (isConnected) {
+                        // 已连接设备 → 断开连接
+                        Logger.info("Close：" + device.toString());
+                        // 关闭 scrcpy 服务，清除所有连接资源
+                        ScrcpyService.shutdown();
+                        // 重置连接状态，允许重新连接
+                        ConnectService.resetConnecting();
+                        // 清除中间画面，防止最后一帧误导用户
+                        ContentPanel contentPanel = MainPanel.getContentPanel();
+                        if (contentPanel != null) {
+                            contentPanel.reset();
+                            contentPanel.repaint();
+                        }
+                    } else {
+                        // 未连接设备 → 建立连接
+                        Logger.info("Open：" + device.toString());
+                        ConnectService.connectDevice(device);
+                    }
                 });
                 table.getColumn("Action").setCellEditor(be);
                 // 设置列宽

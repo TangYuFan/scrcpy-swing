@@ -7,7 +7,7 @@ import java.awt.*;
  *   @desc : 按钮编辑器
  *   @auth : tyf
  *   @date : 2026-03-20 14:04:14
-*/
+ */
 public class ButtonEditor extends DefaultCellEditor {
     private JButton button;
     private String label;
@@ -17,17 +17,23 @@ public class ButtonEditor extends DefaultCellEditor {
 
     private OnButtonClick clickListener;
 
-    public ButtonEditor(JCheckBox checkBox, JTable table,OnButtonClick clickListener) {
+    /** 绿色文字 - Open按钮 */
+    private static final Color COLOR_GREEN = new Color(34, 139, 34);
+    /** 红色文字 - Close按钮 */
+    private static final Color COLOR_RED = new Color(220, 20, 60);
+
+    public ButtonEditor(JCheckBox checkBox, JTable table, OnButtonClick clickListener) {
         super(checkBox);
         this.table = table;
         this.clickListener = clickListener;
         button = new JButton();
         button.setOpaque(true);
+        button.setBorderPainted(true);
+        button.setFont(new Font(Font.DIALOG, Font.BOLD, 12));
         button.addActionListener(e -> fireEditingStopped());
         button.setMargin(new Insets(0, 0, 0, 0));
         button.setFocusPainted(false);
         button.setContentAreaFilled(true);
-        button.setBorderPainted(true);
     }
 
     /**
@@ -41,6 +47,14 @@ public class ButtonEditor extends DefaultCellEditor {
         this.row = row;
         label = (value == null) ? "" : value.toString();
         button.setText(label);
+
+        // 根据按钮文本设置文字颜色
+        if ("Open".equals(label)) {
+            button.setForeground(COLOR_GREEN);
+        } else if ("Close".equals(label)) {
+            button.setForeground(COLOR_RED);
+        }
+
         clicked = true;
         return button;
     }
@@ -56,9 +70,11 @@ public class ButtonEditor extends DefaultCellEditor {
             // 获取设备对象
             DeviceTableModel model = (DeviceTableModel) table.getModel();
             Device device = model.devices.get(row);
-            // 调用回调
+            // 判断设备是否已连接
+            boolean isConnected = model.isConnected(device);
+            // 调用回调，传入设备和连接状态
             if (clickListener != null) {
-                clickListener.onClick(device);
+                clickListener.onClick(device, isConnected);
             }
         }
         clicked = false;
@@ -83,7 +99,14 @@ public class ButtonEditor extends DefaultCellEditor {
      *   @date : 2026-03-20 14:04:14
     */
     public interface OnButtonClick {
-        void onClick(Device device);
+        /**
+         *   @desc : 按钮点击回调
+         *   @auth : tyf
+         *   @date : 2026-03-21
+         *   @param device : 点击的设备
+         *   @param isConnected : 设备是否已连接
+        */
+        void onClick(Device device, boolean isConnected);
     }
 
 

@@ -23,6 +23,16 @@ public class ConnectService {
 
 
     /**
+     *   @desc : 重置连接状态（关闭连接后调用，允许重新连接）
+     *   @auth : tyf
+     *   @date : 2026-03-21
+     */
+    public static void resetConnecting() {
+        connecting.set(false);
+    }
+
+
+    /**
      *   @desc : 打开设备并建立投屏连接
      *   @auth : tyf
      *   @date : 2026-03-20 14:04:14
