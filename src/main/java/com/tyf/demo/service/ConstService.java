@@ -32,6 +32,8 @@ public final class ConstService {
     public static final String SCRCPY_DEVICE_SERVER_PATH = "/data/local/tmp/scrcpy-server.jar";
     /** 视频流转发端口（本地 PC 端口，adb forward 到手机的 localabstract:scrcpy） */
     public static final int SCRCPY_VIDEO_FORWARD_PORT = 27183;
+    /** 控制端口（视频端口+1） */
+    public static final int SCRCPY_CONTROL_PORT = SCRCPY_VIDEO_FORWARD_PORT + 1;
     /** scrcpy-server 版本号 */
     public static final String SCRCPY_SERVER_VERSION = "3.3.4";
     /**
@@ -47,8 +49,8 @@ public final class ConstService {
     //    WiFi	~30-100Mbps	                    5-20ms
     //    USB	~480Mbps	                    <1ms
 
-    public static final int SCRCPY_MAX_FPS = 120;
-//    public static final int SCRCPY_MAX_FPS = 60;
+//    public static final int SCRCPY_MAX_FPS = 120;
+    public static final int SCRCPY_MAX_FPS = 60;
     /** 为 true 时将解码后的帧绘制到 UI；为 false 时仅打抽样日志（排障用） */
     public static final boolean SCRCPY_DRAW_DECODED_TO_UI = true;
 

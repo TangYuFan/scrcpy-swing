@@ -27,6 +27,7 @@ public final class ScrcpyService {
     /** 标记 scrcpy 是否正在运行 */
     private static final AtomicBoolean running = new AtomicBoolean(false);
     private static final AtomicBoolean decoderRunning = new AtomicBoolean(false);
+    private static final AtomicBoolean videoConnected = new AtomicBoolean(false);
 
     /** 长时间运行的「adb shell … app_process」子进程，必须在退出时 destroy，否则会占用 adb.exe。 */
     private static final AtomicReference<Process> scrcpyAdbShell = new AtomicReference<>();
@@ -95,7 +96,9 @@ public final class ScrcpyService {
             // tunnel_forward=true 表示手机监听连接，PC 主动连接
             // 先移除旧的转发，避免半开连接或错误的对端
             adbQuiet(deviceId, "forward --remove tcp:" + ConstService.SCRCPY_VIDEO_FORWARD_PORT);
+            adbQuiet(deviceId, "forward --remove tcp:" + ConstService.SCRCPY_CONTROL_PORT);
             adb(deviceId, "forward tcp:" + ConstService.SCRCPY_VIDEO_FORWARD_PORT + " localabstract:scrcpy");
+            adb(deviceId, "forward tcp:" + ConstService.SCRCPY_CONTROL_PORT + " localabstract:scrcpy");
 
             // 步骤 3.5：杀死手机上可能还在运行的 scrcpy-server
             adbQuiet(deviceId, "shell am force-stop com.genymobile.scrcpy");
@@ -119,10 +122,10 @@ public final class ScrcpyService {
             String startCmd =
                     "shell CLASSPATH=" + ConstService.SCRCPY_DEVICE_SERVER_PATH + " app_process / com.genymobile.scrcpy.Server " + ConstService.SCRCPY_SERVER_VERSION + " " +
                             "log_level=info " +
-                            "video=true audio=false control=false " +
+                            "video=true audio=false control=true " +
                             "tunnel_forward=true " +
                             "raw_stream=false " +
-                            "send_device_meta=true send_codec_meta=true send_frame_meta=true send_dummy_byte=true " +
+                            "send_device_meta=false send_codec_meta=true send_frame_meta=true send_dummy_byte=true " +
                             "max_fps=" + ConstService.SCRCPY_MAX_FPS +
                             (ConstService.SCRCPY_MAX_SIZE > 0 ? " max_size=" + ConstService.SCRCPY_MAX_SIZE : "");
             String fullStartCmd = adbCmd(deviceId) + " " + startCmd;
@@ -135,6 +138,7 @@ public final class ScrcpyService {
             // 步骤 5：启动视频解码线程（异步）
             // 该线程会尝试连接 socket，接收并解码视频流
             startDecodeThread();
+
             started = true;
         } catch (Exception e) {
             // 发生异常时，清理资源
@@ -156,11 +160,14 @@ public final class ScrcpyService {
      *   @date : 2026-03-20 14:04:14
     */
     public static void shutdown() {
-        // 1. 销毁 adb shell 子进程
+        videoConnected.set(false);
+        ControlService.shutdown();
+
+        // 2. 销毁 adb shell 子进程
         Process p = scrcpyAdbShell.getAndSet(null);
         destroyQuietly(p);
 
-        // 2. 强制关闭 socket（打断 decodeLoop 的阻塞读取）
+        // 3. 强制关闭 socket（打断 decodeLoop 的阻塞读取）
         Socket sock = currentSocket.getAndSet(null);
         if (sock != null) {
             try {
@@ -168,7 +175,7 @@ public final class ScrcpyService {
             } catch (Exception ignore) {}
         }
 
-        // 3. 关闭 packet reader
+        // 4. 关闭 packet reader
         ScrcpyVideoPacketReader r = currentReader.getAndSet(null);
         if (r != null) {
             try {
@@ -176,7 +183,7 @@ public final class ScrcpyService {
             } catch (Exception ignore) {}
         }
 
-        // 4. 等待解码线程结束，防止重连时线程竞争导致闪退
+        // 5. 等待解码线程结束，防止重连时线程竞争导致闪退
         Thread t = decodeThread.getAndSet(null);
         if (t != null) {
             try {
@@ -191,14 +198,15 @@ public final class ScrcpyService {
             }
         }
 
-        // 5. 移除端口转发
+        // 6. 移除端口转发
         String deviceId = activeDeviceId;
         activeDeviceId = null;
         if (deviceId != null && !deviceId.trim().isEmpty()) {
             adbQuiet(deviceId, "forward --remove tcp:" + ConstService.SCRCPY_VIDEO_FORWARD_PORT);
+            adbQuiet(deviceId, "forward --remove tcp:" + ConstService.SCRCPY_CONTROL_PORT);
         }
 
-        // 6. 关闭线程池
+        // 7. 关闭线程池
         ExecutorsTools.shutdown();
 
         running.set(false);
@@ -337,6 +345,11 @@ public final class ScrcpyService {
         final int vw = reader.getWidth();
         final int vh = reader.getHeight();
         Logger.info("scrcpy: video size " + vw + "x" + vh);
+
+        // 步骤 2.5：标记视频连接已建立，然后启动控制连接
+        // 重要：scrcpy 服务器要求视频连接先于控制连接！
+        videoConnected.set(true);
+        ControlService.startControl(activeDeviceId);
 
         // 步骤 3：视频解码主循环
         // 从 socket 读取 H.264 数据包 → 使用 FFmpeg 解码为原始图像 → 绘制到 UI

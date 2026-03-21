@@ -6,16 +6,14 @@ import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PushbackInputStream;
-import java.nio.charset.StandardCharsets;
 
 /**
  *   @desc : Scrcpy 视频包读取器
  *   @auth : tyf
  *   @date : 2026-03-20 14:04:14
-*/
+ */
 final class ScrcpyVideoPacketReader implements AutoCloseable {
 
-    private static final int DEVICE_NAME_LEN = 64;
     private static final int HEADER_LEN = 12;
     private static final long FLAG_CONFIG = (1L << 63);
     private static final int CODEC_H264 = 0x68323634;
@@ -28,7 +26,6 @@ final class ScrcpyVideoPacketReader implements AutoCloseable {
     private boolean headerRead;
     private long packetCount;
     private byte[] pendingConfig;
-    /** 最近一次收集到的 SPS/PPS 配置缓存，用于后续 AU 继续解码 */
     private byte[] lastConfig;
 
     ScrcpyVideoPacketReader(InputStream raw) {
@@ -57,18 +54,6 @@ final class ScrcpyVideoPacketReader implements AutoCloseable {
             Logger.info("scrcpy demux: consumed dummy byte");
         } else {
             in.unread(first);
-        }
-
-        byte[] deviceNameRaw = readExactly(DEVICE_NAME_LEN);
-        int end = 0;
-        while (end < deviceNameRaw.length && deviceNameRaw[end] != 0) {
-            end++;
-        }
-        String name = new String(deviceNameRaw, 0, end, StandardCharsets.UTF_8).trim();
-        if (!name.isEmpty()) {
-            Logger.info("scrcpy demux: device meta name=" + name);
-        } else {
-            Logger.info("scrcpy demux: device meta detected");
         }
 
         int codec = be32(readExactly(4), 0);
