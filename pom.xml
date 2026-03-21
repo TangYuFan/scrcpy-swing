@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>org.tyf.com</groupId>
-    <artifactId>app-process</artifactId>
+    <artifactId>scrcpy-swing</artifactId>
     <version>v1</version>
 
     <properties>
