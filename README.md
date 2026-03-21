@@ -2,14 +2,14 @@
 
 ## 功能描述
 
-Mobile 是一款 Android 手机远程控制桌面应用，通过 USB 或 WiFi 连接手机，将手机屏幕实时投射到电脑并支持双向控制。
+Mobile 是一款 Android 手机远程控制桌面应用，通过 USB 或 WiFi 连接手机，将手机屏幕实时投射到电脑并支持双向控制。参考 Scrcpy / QtScrcpy 移植为纯 JAVA-Swing 项目。
 
 <table border="1">
   <tr>
+    <th><img src="demo/img4.png" width="200" height="400"></th>
+    <th><img src="demo/img3.png" width="200" height="400"></th>
     <th><img src="demo/img1.png" width="200" height="150"></th>
     <th><img src="demo/img2.png" width="200" height="150"></th>
-    <th><img src="demo/img3.png" width="200" height="150"></th>
-    <th><img src="demo/img4.png" width="200" height="150"></th>
   </tr>
 </table>
 
