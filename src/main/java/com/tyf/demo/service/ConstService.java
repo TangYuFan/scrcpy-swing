@@ -30,9 +30,8 @@ public final class ConstService {
     public static final String SCRCPY_SERVER_JAR_NAME = "scrcpy-server-v3.3.4.jar";
     /** 手机上存放 scrcpy-server.jar 的路径 */
     public static final String SCRCPY_DEVICE_SERVER_PATH = "/data/local/tmp/scrcpy-server.jar";
-    /** 视频流转发端口（本地 PC 端口，adb forward 到手机的 localabstract:scrcpy） */
-    public static final int SCRCPY_VIDEO_FORWARD_PORT = 27183;
-    public static final int SCRCPY_CONTROL_PORT = 27184;
+    /** Scrcpy 端口（视频和控制共用同一端口，通过多次连接区分） */
+    public static final int SCRCPY_PORT = 27183;
     /** scrcpy-server 版本号 */
     public static final String SCRCPY_SERVER_VERSION = "3.3.4";
     /**

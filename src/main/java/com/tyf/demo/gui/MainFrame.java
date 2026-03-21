@@ -57,6 +57,25 @@ public class MainFrame extends JFrame {
     }
 
     /**
+     *   @desc : 更新窗口标题
+     *   @auth : tyf
+     *   @date : 2026-03-21
+     *   @param deviceName : 设备名称（传入null则恢复默认标题）
+     */
+    public static void updateTitle(String deviceName) {
+        if (mainFrame == null) {
+            return;
+        }
+        SwingUtilities.invokeLater(() -> {
+            if (deviceName == null || deviceName.trim().isEmpty()) {
+                mainFrame.setTitle(ConstService.MAIN_TITLE);
+            } else {
+                mainFrame.setTitle(ConstService.MAIN_TITLE + " - " + deviceName);
+            }
+        });
+    }
+
+    /**
      *   @desc : 横竖屏切换时调整窗口大小
      *   @auth : tyf
      *   @date : 2026-03-20 14:04:14

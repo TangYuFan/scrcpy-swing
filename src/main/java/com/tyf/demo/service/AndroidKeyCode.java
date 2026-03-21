@@ -71,6 +71,7 @@ public final class AndroidKeyCode {
     public static final int KEYCODE_SPACE = 62;
     public static final int KEYCODE_ENTER = 66;
     public static final int KEYCODE_DEL = 67;
+    public static final int KEYCODE_APP_SWITCH = 187;  // 任务切换键
     public static final int KEYCODE_VOLUME_MUTE = 164;
 
     // Meta 状态

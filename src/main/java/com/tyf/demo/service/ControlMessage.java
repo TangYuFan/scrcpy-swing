@@ -30,6 +30,13 @@ public final class ControlMessage {
     public static final int ACTION_UP_TOUCH = 1;
     public static final int ACTION_MOVE_TOUCH = 2;
 
+    // 鼠标按钮 (scrcpy 协议定义，与 Android MotionEvent.BUTTON_* 不同)
+    public static final int AMOTION_EVENT_BUTTON_PRIMARY = 1 << 0;      // 0x01
+    public static final int AMOTION_EVENT_BUTTON_SECONDARY = 1 << 1;   // 0x02
+    public static final int AMOTION_EVENT_BUTTON_TERTIARY = 1 << 2;    // 0x04
+    public static final int AMOTION_EVENT_BUTTON_BACK = 1 << 3;       // 0x08
+    public static final int AMOTION_EVENT_BUTTON_FORWARD = 1 << 4;    // 0x10
+
     // 鼠标模拟触摸的指针ID
     public static final long POINTER_ID_MOUSE = -1;
 
@@ -51,6 +58,7 @@ public final class ControlMessage {
     private float hScroll;
     private float vScroll;
     private int buttons;
+    private int actionButton;
 
     private ControlMessage() {}
 
@@ -73,7 +81,7 @@ public final class ControlMessage {
 
     public static ControlMessage createInjectTouchEvent(int action, long pointerId, float x, float y, 
                                                         int screenWidth, int screenHeight, 
-                                                        float pressure) {
+                                                        float pressure, int actionButton, int buttons) {
         ControlMessage msg = new ControlMessage();
         msg.type = TYPE_INJECT_TOUCH_EVENT;
         msg.action = action;
@@ -83,11 +91,13 @@ public final class ControlMessage {
         msg.screenWidth = screenWidth;
         msg.screenHeight = screenHeight;
         msg.pressure = pressure;
+        msg.actionButton = actionButton;
+        msg.buttons = buttons;
         return msg;
     }
 
     public static ControlMessage createInjectScrollEvent(int x, int y, int screenWidth, int screenHeight,
-                                                          float hScroll, float vScroll) {
+                                                          float hScroll, float vScroll, int buttons) {
         ControlMessage msg = new ControlMessage();
         msg.type = TYPE_INJECT_SCROLL_EVENT;
         msg.positionX = x;
@@ -96,6 +106,7 @@ public final class ControlMessage {
         msg.screenHeight = screenHeight;
         msg.hScroll = hScroll;
         msg.vScroll = vScroll;
+        msg.buttons = buttons;
         return msg;
     }
 
@@ -128,4 +139,32 @@ public final class ControlMessage {
     public float getHScroll() { return hScroll; }
     public float getVScroll() { return vScroll; }
     public int getButtons() { return buttons; }
+    public int getActionButton() { return actionButton; }
+
+    /**
+     *   @desc : 将 float pressure [0,1] 转换为 u16 fixed point
+     *   @auth : tyf
+     *   @date : 2026-03-21
+     */
+    public int getPressureInt() {
+        return (int) (pressure * 0xFFFF);
+    }
+
+    /**
+     *   @desc : 将 float hScroll [-16,16] 转换为 i16 fixed point
+     *   @auth : tyf
+     *   @date : 2026-03-21
+     */
+    public int getHScrollInt() {
+        return (int) (hScroll * 0x7FFF);
+    }
+
+    /**
+     *   @desc : 将 float vScroll [-16,16] 转换为 i16 fixed point
+     *   @auth : tyf
+     *   @date : 2026-03-21
+     */
+    public int getVScrollInt() {
+        return (int) (vScroll * 0x7FFF);
+    }
 }

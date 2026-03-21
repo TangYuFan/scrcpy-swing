@@ -1,6 +1,7 @@
 package com.tyf.demo.service;
 
 import com.tyf.demo.entity.Device;
+import com.tyf.demo.gui.MainFrame;
 import com.tyf.demo.gui.MainPanel;
 import com.tyf.demo.util.CmdTools;
 import org.pmw.tinylog.Logger;
@@ -29,8 +30,10 @@ public final class ScrcpyService {
 
     /** 长时间运行的「adb shell … app_process」子进程，必须在退出时 destroy，否则会占用 adb.exe。 */
     private static final AtomicReference<Process> scrcpyAdbShell = new AtomicReference<>();
-    /** 当前 socket 连接，用于 shutdown 时强制关闭 */
+    /** 当前 video socket 连接，用于 shutdown 时强制关闭 */
     private static final AtomicReference<Socket> currentSocket = new AtomicReference<>();
+    /** 当前 control socket 连接（包级私有，供 ControlService 访问） */
+    static final AtomicReference<Socket> controlSocket = new AtomicReference<>();
     /** 当前 packet reader，用于 shutdown 时关闭流 */
     private static final AtomicReference<ScrcpyVideoPacketReader> currentReader = new AtomicReference<>();
     /** 当前解码线程，用于 shutdown 时等待其结束 */
@@ -131,8 +134,8 @@ public final class ScrcpyService {
             // 将本地 TCP 端口转发到手机的 localabstract:scrcpy
             // tunnel_forward=true 表示手机监听连接，PC 主动连接
             // 先移除旧的转发，避免半开连接或错误的对端
-            adbQuiet(deviceId, "forward --remove tcp:" + ConstService.SCRCPY_VIDEO_FORWARD_PORT);
-            adb(deviceId, "forward tcp:" + ConstService.SCRCPY_VIDEO_FORWARD_PORT + " localabstract:scrcpy");
+            adbQuiet(deviceId, "forward --remove tcp:" + ConstService.SCRCPY_PORT);
+            adb(deviceId, "forward tcp:" + ConstService.SCRCPY_PORT + " localabstract:scrcpy");
 
             // 步骤 3.5：杀死手机上可能还在运行的 scrcpy-server
             adbQuiet(deviceId, "shell am force-stop com.genymobile.scrcpy");
@@ -140,11 +143,11 @@ public final class ScrcpyService {
 
             // 步骤 4：启动手机上的 scrcpy-server（后台异步执行）
             // 命令格式：shell CLASSPATH=<jar路径> app_process / <启动类>
-            // 参数说明：
+            // 关键参数说明：
             //   log_level=info       - 日志级别
             //   video=true           - 启用视频流
             //   audio=false          - 禁用音频
-            //   control=false        - 禁用控制（仅视频）
+            //   control=true         - 启用控制（必须！否则无法发送触摸/键盘事件）
             //   tunnel_forward=true  - 隧道模式：手机创建 LocalServerSocket 监听
             //   raw_stream=false     - 使用 scrcpy 协议封装
             //   send_device_meta=true    - 发送设备信息
@@ -156,7 +159,9 @@ public final class ScrcpyService {
             String startCmd =
                     "shell CLASSPATH=" + ConstService.SCRCPY_DEVICE_SERVER_PATH + " app_process / com.genymobile.scrcpy.Server " + ConstService.SCRCPY_SERVER_VERSION + " " +
                             "log_level=info " +
-                            "video=true audio=false control=false " +
+                            "video=true " +
+                            "audio=false " +
+                            "control=true " +   // 【关键】启用控制！
                             "tunnel_forward=true " +
                             "raw_stream=false " +
                             "send_device_meta=true send_codec_meta=true send_frame_meta=true send_dummy_byte=true " +
@@ -172,10 +177,14 @@ public final class ScrcpyService {
             // 步骤 5：启动视频解码线程（异步）
             // 该线程会尝试连接 socket，接收并解码视频流
             startDecodeThread();
+
+            // 更新窗口标题为 "Mobile - 设备名称"
+            MainFrame.updateTitle(deviceId);
+
             started = true;
         } catch (Exception e) {
             // 发生异常时，清理资源
-            adbQuiet(deviceId, "forward --remove tcp:" + ConstService.SCRCPY_VIDEO_FORWARD_PORT);
+            adbQuiet(deviceId, "forward --remove tcp:" + ConstService.SCRCPY_PORT);
             Process p = scrcpyAdbShell.getAndSet(null);
             destroyQuietly(p);
             activeDeviceId = null;
@@ -193,11 +202,19 @@ public final class ScrcpyService {
      *   @date : 2026-03-20 14:04:14
     */
     public static void shutdown() {
-        // 1. 销毁 adb shell 子进程
+        // 1. 关闭控制连接
+        Socket ctrlSock = controlSocket.getAndSet(null);
+        if (ctrlSock != null) {
+            try {
+                ctrlSock.close();
+            } catch (Exception ignore) {}
+        }
+
+        // 2. 销毁 adb shell 子进程
         Process p = scrcpyAdbShell.getAndSet(null);
         destroyQuietly(p);
 
-        // 2. 强制关闭 socket（打断 decodeLoop 的阻塞读取）
+        // 3. 强制关闭 video socket（打断 decodeLoop 的阻塞读取）
         Socket sock = currentSocket.getAndSet(null);
         if (sock != null) {
             try {
@@ -205,7 +222,7 @@ public final class ScrcpyService {
             } catch (Exception ignore) {}
         }
 
-        // 3. 关闭 packet reader
+        // 4. 关闭 packet reader
         ScrcpyVideoPacketReader r = currentReader.getAndSet(null);
         if (r != null) {
             try {
@@ -213,7 +230,7 @@ public final class ScrcpyService {
             } catch (Exception ignore) {}
         }
 
-        // 4. 等待解码线程结束，防止重连时线程竞争导致闪退
+        // 5. 等待解码线程结束，防止重连时线程竞争导致闪退
         Thread t = decodeThread.getAndSet(null);
         if (t != null) {
             try {
@@ -228,12 +245,15 @@ public final class ScrcpyService {
             }
         }
 
-        // 5. 移除端口转发
+        // 6. 移除端口转发
         String deviceId = activeDeviceId;
         activeDeviceId = null;
         if (deviceId != null && !deviceId.trim().isEmpty()) {
-            adbQuiet(deviceId, "forward --remove tcp:" + ConstService.SCRCPY_VIDEO_FORWARD_PORT);
+            adbQuiet(deviceId, "forward --remove tcp:" + ConstService.SCRCPY_PORT);
         }
+
+        // 7. 恢复默认窗口标题
+        MainFrame.updateTitle(null);
 
         running.set(false);
     }
@@ -276,6 +296,36 @@ public final class ScrcpyService {
     }
 
     /**
+     *   @desc : 连接控制 Socket
+     *   @auth : tyf
+     *   @date : 2026-03-21
+     *   说明：视频和控制共用同一端口，需要连接两次。
+     *         第1次连接成功建立视频通道，
+     *         第2次连接成功建立控制通道。
+     */
+    private static void connectControlSocket(String deviceId) throws IOException {
+        Logger.debug("control: connecting to port " + ConstService.SCRCPY_PORT);
+        Socket sock = new Socket();
+        sock.connect(new InetSocketAddress("127.0.0.1", ConstService.SCRCPY_PORT), 2000);
+        sock.setTcpNoDelay(true);
+        sock.setSoTimeout(3000); // 设置超时，避免无限等待
+        Logger.debug("control: connected to socket");
+        
+        // 尝试读取 1 个 dummy byte（服务器可能会发送，也可能不发送）
+        try {
+            int b = sock.getInputStream().read();
+            Logger.debug("control: read dummy byte result=" + b);
+        } catch (IOException e) {
+            Logger.debug("control: no dummy byte to read - " + e.getMessage());
+        }
+
+        // 初始化控制服务
+        ControlService.startControl(deviceId);
+
+        Logger.info("control: socket connected");
+    }
+
+    /**
      *   @desc : 启动解码线程
      *   @auth : tyf
      *   @date : 2026-03-20 14:04:14
@@ -309,6 +359,9 @@ public final class ScrcpyService {
      *   @param reason : 断开原因
      */
     private static void notifyDisconnect(String reason) {
+        // 恢复默认窗口标题
+        MainFrame.updateTitle(null);
+        
         OnDisconnectListener listener = disconnectListener;
         if (listener != null) {
             try {
@@ -330,34 +383,46 @@ public final class ScrcpyService {
 
         final int maxAttempts = 50;   // 最多重试 50 次
         final int retryGapMs = 100;   // 每次重试间隔 100ms（更快检测连接）
-        Socket s = null;
+        Socket videoSocket = null;
+        Socket controlSocketLocal = null;
         ScrcpyVideoPacketReader reader = null;
         IOException lastFail = null;
         boolean headerOk = false;
 
-        // 步骤 1：连接 socket（带重试）
-        // 尝试连接本地转发的端口，直到成功读取视频头
+        // 步骤 1：建立视频和控制两个 socket 连接
+        // 关键：必须先建立两个连接，服务器才知道视频和控制分别用哪个 socket
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            // 清理之前的连接
             if (reader != null) {
-                try {
-                    reader.close();
-                } catch (Exception ignore) {}
+                try { reader.close(); } catch (Exception ignore) {}
                 reader = null;
             }
-            if (s != null) {
-                try {
-                    s.close();
-                } catch (IOException ignore) {}
-                s = null;
+            if (videoSocket != null) {
+                try { videoSocket.close(); } catch (IOException ignore) {}
+                videoSocket = null;
             }
+            if (controlSocketLocal != null) {
+                try { controlSocketLocal.close(); } catch (IOException ignore) {}
+                controlSocketLocal = null;
+            }
+
             try {
                 Logger.debug("scrcpy connect attempt " + attempt + "/" + maxAttempts);
-                s = new Socket();
-                s.connect(new InetSocketAddress("127.0.0.1", ConstService.SCRCPY_VIDEO_FORWARD_PORT), 2000);
-                s.setTcpNoDelay(true);
-                s.setSoTimeout(0);
-                reader = new ScrcpyVideoPacketReader(s.getInputStream());
-                reader.readHeader();    // 读取视频头（分辨率、编码器信息等）
+
+                // 1.1 建立视频连接
+                videoSocket = new Socket();
+                videoSocket.connect(new InetSocketAddress("127.0.0.1", ConstService.SCRCPY_PORT), 2000);
+                videoSocket.setTcpNoDelay(true);
+
+                // 1.2 建立控制连接
+                controlSocketLocal = new Socket();
+                controlSocketLocal.connect(new InetSocketAddress("127.0.0.1", ConstService.SCRCPY_PORT), 2000);
+                controlSocketLocal.setTcpNoDelay(true);
+                controlSocketLocal.setSoTimeout(3000);
+
+                // 1.3 读取视频头
+                reader = new ScrcpyVideoPacketReader(videoSocket.getInputStream());
+                reader.readHeader();
                 headerOk = true;
                 break;
             } catch (IOException e) {
@@ -368,20 +433,20 @@ public final class ScrcpyService {
         }
 
         // 记录 socket 和 reader 引用，供 shutdown() 使用
-        currentSocket.set(s);
+        currentSocket.set(videoSocket);
+        ScrcpyService.controlSocket.set(controlSocketLocal);
         currentReader.set(reader);
 
         // 连接失败，抛出异常
         if (!headerOk) {
             if (reader != null) {
-                try {
-                    reader.close();
-                } catch (Exception ignore) {}
+                try { reader.close(); } catch (Exception ignore) {}
             }
-            if (s != null) {
-                try {
-                    s.close();
-                } catch (IOException ignore) {}
+            if (videoSocket != null) {
+                try { videoSocket.close(); } catch (IOException ignore) {}
+            }
+            if (controlSocketLocal != null) {
+                try { controlSocketLocal.close(); } catch (IOException ignore) {}
             }
             throw new IOException("scrcpy: failed to read video header after " + maxAttempts + " attempts", lastFail);
         }
@@ -391,9 +456,19 @@ public final class ScrcpyService {
         final int vh = reader.getHeight();
         Logger.info("scrcpy: video size " + vw + "x" + vh);
 
+        // 更新控制服务的视频尺寸
+        ControlService.updateVideoSize(vw, vh);
+
+        // 步骤 2.5：初始化控制服务
+        // 控制 socket 已经建立，现在初始化控制服务
+        String deviceId = activeDeviceId;
+        if (deviceId != null) {
+            ControlService.startControlWithSocket(controlSocketLocal, deviceId);
+        }
+
         // 步骤 3：视频解码主循环
         // 从 socket 读取 H.264 数据包 → 使用 FFmpeg 解码为原始图像 → 绘制到 UI
-        try (Socket sock = s) {
+        try (Socket sock = videoSocket) {
             try (ScrcpyVideoPacketReader r = reader) {
                 AtomicLong decodedFrames = new AtomicLong();
                 ScrcpyFrameSink sink = (packed, w, h) -> {
@@ -521,4 +596,3 @@ public final class ScrcpyService {
         return adb + " -s " + deviceId;
     }
 }
-

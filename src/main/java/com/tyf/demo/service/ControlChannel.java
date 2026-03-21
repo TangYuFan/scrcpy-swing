@@ -2,6 +2,7 @@ package com.tyf.demo.service;
 
 import org.pmw.tinylog.Logger;
 
+import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
@@ -13,13 +14,14 @@ import java.nio.ByteBuffer;
  */
 final class ControlChannel {
 
-    private final OutputStream out;
+    private final DataOutputStream out;
 
     ControlChannel(OutputStream out) {
-        this.out = out;
+        this.out = new DataOutputStream(out);
     }
 
     public void send(ControlMessage msg) throws IOException {
+        String typeName = getTypeName(msg.getType());
         switch (msg.getType()) {
             case ControlMessage.TYPE_INJECT_KEYCODE:
                 writeInjectKeycode(msg);
@@ -40,17 +42,50 @@ final class ControlChannel {
                 writeEmpty(msg.getType());
                 break;
         }
+        // Logger.debug("control: sent type=" + typeName + " flushed");
     }
 
-    // TYPE_INJECT_KEYCODE: type(1) + action(4) + keycode(4) + repeat(4) + metaState(4) = 17 bytes
+    private static String getTypeName(int type) {
+        switch (type) {
+            case ControlMessage.TYPE_INJECT_KEYCODE: return "KEYCODE";
+            case ControlMessage.TYPE_INJECT_TEXT: return "TEXT";
+            case ControlMessage.TYPE_INJECT_TOUCH_EVENT: return "TOUCH";
+            case ControlMessage.TYPE_INJECT_SCROLL_EVENT: return "SCROLL";
+            case ControlMessage.TYPE_BACK_OR_SCREEN_ON: return "BACK_OR_SCREEN_ON";
+            case ControlMessage.TYPE_EXPAND_NOTIFICATION_PANEL: return "EXPAND_NOTIFICATION";
+            case ControlMessage.TYPE_COLLAPSE_PANELS: return "COLLAPSE_PANELS";
+            default: return "UNKNOWN(" + type + ")";
+        }
+    }
+
+    /**
+     *   @desc : 写入一个字节
+     */
+    private void writeByte(int v) throws IOException {
+        out.write(v);
+    }
+
+    /**
+     *   @desc : 写入 32 位整数（大端序）
+     */
+    private void writeInt(int v) throws IOException {
+        out.writeInt(v);
+    }
+
+    /**
+     *   @desc : 写入 16 位无符号整数（大端序）
+     */
+    private void writeShort(int v) throws IOException {
+        out.writeShort(v & 0xFFFF);
+    }
+
+    // TYPE_INJECT_KEYCODE: type(1) + action(1) + keycode(4) + repeat(4) + metaState(4) = 14 bytes
     private void writeInjectKeycode(ControlMessage msg) throws IOException {
-        ByteBuffer buf = ByteBuffer.allocate(17);
-        buf.put((byte) ControlMessage.TYPE_INJECT_KEYCODE);
-        buf.putInt(msg.getAction());
-        buf.putInt(msg.getKeycode());
-        buf.putInt(msg.getRepeat());
-        buf.putInt(msg.getMetaState());
-        out.write(buf.array());
+        writeByte(ControlMessage.TYPE_INJECT_KEYCODE);
+        writeByte(msg.getAction());
+        writeInt(msg.getKeycode());
+        writeInt(msg.getRepeat());
+        writeInt(msg.getMetaState());
         out.flush();
     }
 
@@ -64,49 +99,81 @@ final class ControlChannel {
             text = text.substring(0, ControlMessage.INJECT_TEXT_MAX_LENGTH);
         }
         byte[] textBytes = text.getBytes("UTF-8");
-        ByteBuffer buf = ByteBuffer.allocate(5 + textBytes.length);
-        buf.put((byte) ControlMessage.TYPE_INJECT_TEXT);
-        buf.putInt(textBytes.length);
-        buf.put(textBytes);
-        out.write(buf.array());
+        writeByte(ControlMessage.TYPE_INJECT_TEXT);
+        writeInt(textBytes.length);
+        out.write(textBytes);
         out.flush();
     }
 
-    // TYPE_INJECT_TOUCH_EVENT: type(1) + action(4) + pointerId(8) + x(4) + y(4) + screenW(4) + screenH(4) + pressure(4) = 33 bytes
+    // TYPE_INJECT_TOUCH_EVENT: 
+    // type(1) + action(1) + pointerId(8) + x(4) + y(4) + screenWidth(2) + screenHeight(2) + pressure(2) + actionButton(4) + buttons(4) = 32 bytes
     private void writeInjectTouchEvent(ControlMessage msg) throws IOException {
-        ByteBuffer buf = ByteBuffer.allocate(33);
-        buf.put((byte) ControlMessage.TYPE_INJECT_TOUCH_EVENT);
-        buf.putInt(msg.getAction());
-        buf.putLong(msg.getPointerId());
-        buf.putInt(msg.getPositionX());
-        buf.putInt(msg.getPositionY());
-        buf.putInt(msg.getScreenWidth());
-        buf.putInt(msg.getScreenHeight());
-        buf.putFloat(msg.getPressure());
-        out.write(buf.array());
+        // 打印字节数组
+        byte[] data = new byte[32];
+        int pos = 0;
+        data[pos++] = (byte) ControlMessage.TYPE_INJECT_TOUCH_EVENT;
+        data[pos++] = (byte) msg.getAction();
+        // pointerId (8 bytes big endian)
+        for (int i = 7; i >= 0; i--) {
+            data[pos++] = (byte) (msg.getPointerId() >> (i * 8));
+        }
+        // x (4 bytes big endian)
+        for (int i = 3; i >= 0; i--) {
+            data[pos++] = (byte) (msg.getPositionX() >> (i * 8));
+        }
+        // y (4 bytes big endian)
+        for (int i = 3; i >= 0; i--) {
+            data[pos++] = (byte) (msg.getPositionY() >> (i * 8));
+        }
+        // screenWidth (2 bytes big endian)
+        data[pos++] = (byte) (msg.getScreenWidth() >> 8);
+        data[pos++] = (byte) msg.getScreenWidth();
+        // screenHeight (2 bytes big endian)
+        data[pos++] = (byte) (msg.getScreenHeight() >> 8);
+        data[pos++] = (byte) msg.getScreenHeight();
+        // pressure (2 bytes big endian)
+        int pressure = msg.getPressureInt();
+        data[pos++] = (byte) (pressure >> 8);
+        data[pos++] = (byte) pressure;
+        // actionButton (4 bytes big endian)
+        for (int i = 3; i >= 0; i--) {
+            data[pos++] = (byte) (msg.getActionButton() >> (i * 8));
+        }
+        // buttons (4 bytes big endian)
+        for (int i = 3; i >= 0; i--) {
+            data[pos++] = (byte) (msg.getButtons() >> (i * 8));
+        }
+        
+        // 写入并刷新
+        out.write(data);
         out.flush();
+        
+        // 打印十六进制（调试用）
+        // StringBuilder hex = new StringBuilder();
+        // for (byte b : data) {
+        //     hex.append(String.format("%02X ", b));
+        // }
+        // Logger.debug("control: TOUCH hex=[" + hex.toString() + "]");
     }
 
-    // TYPE_INJECT_SCROLL_EVENT: type(1) + x(4) + y(4) + screenW(4) + screenH(4) + hScroll(4) + vScroll(4) = 25 bytes
+    // TYPE_INJECT_SCROLL_EVENT: 
+    // type(1) + x(4) + y(4) + screenWidth(2) + screenHeight(2) + hScroll(2) + vScroll(2) + buttons(4) = 21 bytes
     private void writeInjectScrollEvent(ControlMessage msg) throws IOException {
-        ByteBuffer buf = ByteBuffer.allocate(25);
-        buf.put((byte) ControlMessage.TYPE_INJECT_SCROLL_EVENT);
-        buf.putInt(msg.getPositionX());
-        buf.putInt(msg.getPositionY());
-        buf.putInt(msg.getScreenWidth());
-        buf.putInt(msg.getScreenHeight());
-        buf.putFloat(msg.getHScroll());
-        buf.putFloat(msg.getVScroll());
-        out.write(buf.array());
+        writeByte(ControlMessage.TYPE_INJECT_SCROLL_EVENT);
+        writeInt(msg.getPositionX());
+        writeInt(msg.getPositionY());
+        writeShort(msg.getScreenWidth());
+        writeShort(msg.getScreenHeight());
+        writeShort(msg.getHScrollInt());   // i16 fixed point
+        writeShort(msg.getVScrollInt());   // i16 fixed point
+        writeInt(msg.getButtons());
         out.flush();
     }
 
-    // TYPE_BACK_OR_SCREEN_ON: type(1) + action(4) = 5 bytes
+    // TYPE_BACK_OR_SCREEN_ON: type(1) + action(1) = 2 bytes
     private void writeBackOrScreenOn(ControlMessage msg) throws IOException {
-        ByteBuffer buf = ByteBuffer.allocate(5);
-        buf.put((byte) ControlMessage.TYPE_BACK_OR_SCREEN_ON);
-        buf.putInt(msg.getAction());
-        out.write(buf.array());
+        writeByte(ControlMessage.TYPE_BACK_OR_SCREEN_ON);
+        writeByte(msg.getAction());
         out.flush();
     }
 

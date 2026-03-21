@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public final class ControlService {
 
-    private static final int CONTROL_PORT = ConstService.SCRCPY_CONTROL_PORT;
+    private static final int CONTROL_PORT = ConstService.SCRCPY_PORT;
 
     private static final AtomicReference<Socket> controlSocket = new AtomicReference<>();
     private static final AtomicReference<ControlChannel> controlChannel = new AtomicReference<>();
@@ -25,8 +25,16 @@ public final class ControlService {
     private static volatile int currentVideoHeight;
     private static volatile boolean videoRotation = false;
 
+    // 用于拖拽时的状态跟踪
+    private static volatile boolean isDragging = false;
+
     private ControlService() {}
 
+    /**
+     *   @desc : 启动控制服务（创建新连接）
+     *   @auth : tyf
+     *   @date : 2026-03-21
+     */
     public static void startControl(String deviceId) {
         Thread t = new Thread(() -> {
             try {
@@ -37,6 +45,29 @@ public final class ControlService {
         }, "scrcpy-control");
         controlThread.set(t);
         t.start();
+    }
+
+    /**
+     *   @desc : 使用已有的 socket 启动控制服务
+     *   @auth : tyf
+     *   @date : 2026-03-21
+     *   @param sock : 已建立的控制 socket
+     *   @param deviceId : 设备ID
+     */
+    public static void startControlWithSocket(Socket sock, String deviceId) {
+        try {
+            sock.setTcpNoDelay(true);
+            sock.setSoTimeout(0); // 无超时
+            controlSocket.set(sock);
+
+            OutputStream out = sock.getOutputStream();
+            ControlChannel channel = new ControlChannel(out);
+            controlChannel.set(channel);
+
+            Logger.info("control: connected with existing socket, output stream ready");
+        } catch (IOException e) {
+            Logger.error("control: init failed - " + e.getMessage());
+        }
     }
 
     private static void connectControlSocket(String deviceId) throws IOException {
@@ -66,6 +97,7 @@ public final class ControlService {
                 t.join(1000);
             } catch (InterruptedException ignore) {}
         }
+        isDragging = false;
         Logger.info("control: shutdown");
     }
 
@@ -79,21 +111,60 @@ public final class ControlService {
         videoRotation = rotation;
     }
 
-    public static void sendTouchDown(int x, int y) {
-        sendTouch(ControlMessage.ACTION_DOWN_TOUCH, x, y);
+    /**
+     *   @desc : 触摸按下（鼠标左键按下）
+     *   @auth : tyf
+     *   @date : 2026-03-21
+     */
+    public static void sendTouchDown(int x, int y, int actionButton) {
+        sendTouch(ControlMessage.ACTION_DOWN_TOUCH, x, y, actionButton, ControlMessage.AMOTION_EVENT_BUTTON_PRIMARY);
+        isDragging = true;
     }
 
+    /**
+     *   @desc : 触摸释放（鼠标左键释放）
+     *   @auth : tyf
+     *   @date : 2026-03-21
+     */
     public static void sendTouchUp(int x, int y) {
-        sendTouch(ControlMessage.ACTION_UP_TOUCH, x, y);
+        sendTouch(ControlMessage.ACTION_UP_TOUCH, x, y, 0, ControlMessage.AMOTION_EVENT_BUTTON_PRIMARY);
+        isDragging = false;
     }
 
+    /**
+     *   @desc : 触摸移动（鼠标拖拽）
+     *   @auth : tyf
+     *   @date : 2026-03-21
+     */
     public static void sendTouchMove(int x, int y) {
-        sendTouch(ControlMessage.ACTION_MOVE_TOUCH, x, y);
+        sendTouch(ControlMessage.ACTION_MOVE_TOUCH, x, y, 0, ControlMessage.AMOTION_EVENT_BUTTON_PRIMARY);
     }
 
-    private static void sendTouch(int action, int x, int y) {
+    /**
+     *   @desc : 右键按下
+     *   @auth : tyf
+     *   @date : 2026-03-21
+     */
+    public static void sendTouchDownRight(int x, int y) {
+        sendTouch(ControlMessage.ACTION_DOWN_TOUCH, x, y, ControlMessage.AMOTION_EVENT_BUTTON_SECONDARY, ControlMessage.AMOTION_EVENT_BUTTON_SECONDARY);
+    }
+
+    /**
+     *   @desc : 右键释放
+     *   @auth : tyf
+     *   @date : 2026-03-21
+     */
+    public static void sendTouchUpRight(int x, int y) {
+        sendTouch(ControlMessage.ACTION_UP_TOUCH, x, y, 0, ControlMessage.AMOTION_EVENT_BUTTON_SECONDARY);
+    }
+
+    private static void sendTouch(int action, int x, int y, int actionButton, int buttons) {
         ControlChannel ch = controlChannel.get();
-        if (ch == null) return;
+        if (ch == null) {
+            Logger.debug("control: sendTouch skipped - channel is null");
+            Logger.debug("control: available sockets - controlSocket=" + controlSocket.get() + " controlChannel=" + controlChannel.get());
+            return;
+        }
 
         try {
             int sw = currentVideoWidth;
@@ -109,11 +180,47 @@ public final class ControlService {
                     ControlMessage.POINTER_ID_MOUSE,
                     x, y,
                     sw, sh,
-                    pressure
+                    pressure,
+                    actionButton,
+                    buttons
             );
+            Logger.debug("control: sendTouch action=" + action + " x=" + x + " y=" + y + " sw=" + sw + " sh=" + sh);
             ch.send(msg);
         } catch (IOException e) {
             Logger.error("control: send touch failed - " + e.getMessage());
+        }
+    }
+
+    /**
+     *   @desc : 发送滚动事件
+     *   @auth : tyf
+     *   @date : 2026-03-21
+     */
+    public static void sendScroll(int x, int y, float hScroll, float vScroll) {
+        ControlChannel ch = controlChannel.get();
+        if (ch == null) {
+            Logger.debug("control: sendScroll skipped - channel is null");
+            return;
+        }
+
+        try {
+            int sw = currentVideoWidth;
+            int sh = currentVideoHeight;
+            if (sw <= 0 || sh <= 0) {
+                sw = 1080;
+                sh = 1920;
+            }
+
+            ControlMessage msg = ControlMessage.createInjectScrollEvent(
+                    x, y,
+                    sw, sh,
+                    hScroll, vScroll,
+                    ControlMessage.AMOTION_EVENT_BUTTON_PRIMARY
+            );
+            Logger.debug("control: sendScroll x=" + x + " y=" + y + " hScroll=" + hScroll + " vScroll=" + vScroll);
+            ch.send(msg);
+        } catch (IOException e) {
+            Logger.error("control: send scroll failed - " + e.getMessage());
         }
     }
 
@@ -154,6 +261,11 @@ public final class ControlService {
         }
     }
 
+    /**
+     *   @desc : 返回键（屏幕亮时按返回，屏幕暗时亮屏）
+     *   @auth : tyf
+     *   @date : 2026-03-21
+     */
     public static void sendBack() {
         ControlChannel ch = controlChannel.get();
         if (ch == null) return;
@@ -203,5 +315,14 @@ public final class ControlService {
         } catch (IOException e) {
             Logger.error("control: collapse panels failed - " + e.getMessage());
         }
+    }
+
+    /**
+     *   @desc : 检查是否正在拖拽
+     *   @auth : tyf
+     *   @date : 2026-03-21
+     */
+    public static boolean isDragging() {
+        return isDragging;
     }
 }
