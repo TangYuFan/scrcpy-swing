@@ -16,7 +16,7 @@ import java.awt.event.ActionListener;
 public class SideButtonPanel extends JPanel {
 
     /** 面板宽度 */
-    private static final int PANEL_WIDTH = 50;
+    private static final int PANEL_WIDTH = 36;
 
     public SideButtonPanel() {
         setPreferredSize(new Dimension(PANEL_WIDTH, 0));
