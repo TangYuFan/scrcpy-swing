@@ -11,8 +11,8 @@ import java.awt.*;
  */
 public class ButtonRenderer extends JButton implements TableCellRenderer {
 
-    /** 绿色文字 - Open按钮 */
-    private static final Color COLOR_GREEN = new Color(34, 139, 34);
+    /** 蓝色文字 - Open按钮 */
+    private static final Color COLOR_BLUE = new Color(30, 136, 229);
     /** 红色文字 - Close按钮 */
     private static final Color COLOR_RED = new Color(220, 20, 60);
 
@@ -26,7 +26,7 @@ public class ButtonRenderer extends JButton implements TableCellRenderer {
      *   @desc : 获取单元格渲染组件
      *   @auth : tyf
      *   @date : 2026-03-20 14:04:14
-    */
+     */
     @Override
     public Component getTableCellRendererComponent(JTable table, Object value,
                                                    boolean isSelected, boolean hasFocus,
@@ -36,7 +36,7 @@ public class ButtonRenderer extends JButton implements TableCellRenderer {
 
         // 根据按钮文本设置文字颜色
         if ("Open".equals(text)) {
-            setForeground(COLOR_GREEN);
+            setForeground(COLOR_BLUE);
         } else if ("Close".equals(text)) {
             setForeground(COLOR_RED);
         } else {

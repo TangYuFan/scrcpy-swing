@@ -18,9 +18,9 @@ public class ButtonEditor extends DefaultCellEditor {
     private OnButtonClick clickListener;
 
     /** 绿色文字 - Open按钮 */
-    private static final Color COLOR_GREEN = new Color(34, 139, 34);
+    private static final Color COLOR_BLUE = new Color(30, 136, 229);
     /** 红色文字 - Close按钮 */
-    private static final Color COLOR_RED = new Color(220, 20, 60);
+    private static final Color COLOR_RED = Color.red;
 
     public ButtonEditor(JCheckBox checkBox, JTable table, OnButtonClick clickListener) {
         super(checkBox);
@@ -50,7 +50,7 @@ public class ButtonEditor extends DefaultCellEditor {
 
         // 根据按钮文本设置文字颜色
         if ("Open".equals(label)) {
-            button.setForeground(COLOR_GREEN);
+            button.setForeground(COLOR_BLUE);
         } else if ("Close".equals(label)) {
             button.setForeground(COLOR_RED);
         }

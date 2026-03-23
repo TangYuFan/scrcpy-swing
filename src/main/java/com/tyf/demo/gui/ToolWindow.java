@@ -25,7 +25,7 @@ public class ToolWindow extends JDialog {
         setResizable(false);
         setBackground(new Color(0, 0, 0, 0));
 
-        int arc = 12;
+        int arc = 16;
         
         JPanel mainPanel = new JPanel(new GridBagLayout()) {
             @Override
@@ -43,7 +43,7 @@ public class ToolWindow extends JDialog {
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.gridx = 0;
         gbc.gridy = 0;
-        gbc.insets = new Insets(2, 4, 2, 4);
+        gbc.insets = new Insets(4, 4, 2, 4);
         gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.weightx = 1.0;
 
@@ -75,7 +75,7 @@ public class ToolWindow extends JDialog {
 
         setContentPane(mainPanel);
         
-        getRootPane().setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
+        getRootPane().setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
         
         pack();
         
@@ -120,7 +120,7 @@ public class ToolWindow extends JDialog {
             Dimension ownerSize = ownerFrame.getSize();
             Dimension mySize = getSize();
             
-            int x = ownerLoc.x + ownerSize.width + 2;
+            int x = ownerLoc.x + ownerSize.width;
             int y = ownerLoc.y + (ownerSize.height - mySize.height) / 2;
             
             setLocation(x, y);
