@@ -9,6 +9,7 @@ import com.tyf.demo.service.ConstService;
 import com.tyf.demo.service.ScrcpyService;
 import com.tyf.demo.util.DeviceTools;
 import com.tyf.demo.util.GuiTools;
+import com.tyf.demo.util.WifiTools;
 import org.pmw.tinylog.Logger;
 
 import javax.swing.*;
@@ -16,6 +17,7 @@ import java.awt.*;
 import java.awt.event.*;
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.Charset;
 import java.util.List;
 
 /**
@@ -30,6 +32,9 @@ public class TopPanel extends JPanel {
     // 手机端日志窗口
     JDialog mlogDialog;
     Process mlogProcess;
+    // Wifi 调试窗口
+    JDialog wifiDialog;
+    Process wifiProcess;
 
     public TopPanel() {
 
@@ -45,6 +50,7 @@ public class TopPanel extends JPanel {
         rightPanel.setOpaque(false);
 
         JLabel swi = GuiTools.createLinkLabel("Switch", ConstService.FONT_NORMAL, ConstService.THEME_PRIMARY);
+        JLabel wifi = GuiTools.createLinkLabel("Wifi", ConstService.FONT_NORMAL, ConstService.THEME_PRIMARY);
         JLabel readme = GuiTools.createLinkLabel("Info", ConstService.FONT_NORMAL, ConstService.THEME_PRIMARY);
         JLabel log = GuiTools.createLinkLabel("Log", ConstService.FONT_NORMAL, ConstService.THEME_PRIMARY);
         JLabel mlog = GuiTools.createLinkLabel("MLog", ConstService.FONT_NORMAL, ConstService.THEME_PRIMARY);
@@ -68,8 +74,8 @@ public class TopPanel extends JPanel {
             public void mouseClicked(MouseEvent e) {
                 // 快捷键说明文本
                 String shortcuts =
+                        "----------------\n" +
                     "【快捷键说明】\n" +
-                    "\n" +
                     "● 实体按钮（底部工具栏）：\n" +
                     "  Home      - 返回主屏幕\n" +
                     "  Back      - 返回键\n" +
@@ -77,14 +83,12 @@ public class TopPanel extends JPanel {
                     "  Power     - 电源键\n" +
                     "  Vol+/Vol- - 音量调节\n" +
                     "  Notify    - 展开通知面板\n" +
-                    "\n" +
                     "● 鼠标操作：\n" +
                     "  左键点击    - 触摸点击\n" +
                     "  左键拖拽    - 触摸拖拽\n" +
                     "  右键点击    - 返回键（释放时触发）\n" +
                     "  滚轮滚动    - 页面滚动\n" +
                     "  Enter/Space - 点击屏幕中心\n" +
-                    "\n" +
                     "● 键盘快捷键：\n" +
                     "  Ctrl+H          - Home键\n" +
                     "  Ctrl+B / Ctrl+\\ - 返回键\n" +
@@ -97,10 +101,13 @@ public class TopPanel extends JPanel {
                     "  Ctrl+Down       - 音量-\n" +
                     "  ESC             - 返回键\n" +
                     "  Shift+F10       - 菜单键\n" +
-                    "\n" +
+                    "----------------\n" +
+                    "【Wifi调试】\n" +
+                    "1.  点击 Wifi，将已经 USB 连接的设备开启无线调试\n" +
+                    "2.  连接成功后可移除 USB，选择 Wifi 设备打开\n" +
+                    "----------------\n" +
                     "【高DPI缩放设置】\n" +
-                    "1. 右键 exe → 属性 → " +
-                            "   兼容性 → 更改高DPI设置\n" +
+                    "1. 右键 exe → 属性 → 兼容性 → 更改高DPI设置\n" +
                     "2. 勾选「替代高DPI缩放行为」→ 应用程序\n";
 
                 // 使用文本域显示，支持滚动
@@ -112,7 +119,7 @@ public class TopPanel extends JPanel {
                 textArea.setBackground(new Color(250, 250, 250));
 
                 JScrollPane scrollPane = new JScrollPane(textArea);
-                scrollPane.setPreferredSize(new Dimension(360, 400));
+                scrollPane.setPreferredSize(new Dimension(300, 400));
 
                 JOptionPane.showMessageDialog(
                         MainFrame.getMainFrame(),
@@ -120,6 +127,203 @@ public class TopPanel extends JPanel {
                         "Keyboard Shortcuts",
                         JOptionPane.PLAIN_MESSAGE
                 );
+            }
+        });
+
+
+        // Wifi 无线调试
+        wifi.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (wifiDialog != null && wifiDialog.isShowing()) {
+                    wifiDialog.dispose();
+                    wifiDialog = null;
+                    if (wifiProcess != null) {
+                        wifiProcess.destroy();
+                        wifiProcess = null;
+                    }
+                    return;
+                }
+
+                // 创建日志窗口
+                wifiDialog = new JDialog(MainFrame.getMainFrame(), "Wifi Debug");
+                wifiDialog.setSize(300, 400);
+                wifiDialog.setLayout(new BorderLayout());
+
+                // 日志文本区域
+                JTextArea logTextArea = new JTextArea();
+                logTextArea.setEditable(false);
+                logTextArea.setFont(new Font("Consolas", Font.PLAIN, 12));
+                JScrollPane scrollPane = new JScrollPane(logTextArea);
+                wifiDialog.add(scrollPane, BorderLayout.CENTER);
+
+                // 底部按钮面板
+                JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+                JButton clearBtn = new JButton("clean");
+                JButton closeBtn = new JButton("close");
+                buttonPanel.add(clearBtn);
+                buttonPanel.add(closeBtn);
+                wifiDialog.add(buttonPanel, BorderLayout.SOUTH);
+
+                // 清空按钮
+                clearBtn.addActionListener(ev -> logTextArea.setText(""));
+
+                // 关闭按钮
+                closeBtn.addActionListener(ev -> {
+                    if (wifiProcess != null) {
+                        wifiProcess.destroy();
+                        wifiProcess = null;
+                    }
+                    wifiDialog.dispose();
+                    wifiDialog = null;
+                });
+
+                // 窗口关闭时也停止进程
+                wifiDialog.addWindowListener(new WindowAdapter() {
+                    @Override
+                    public void windowClosing(WindowEvent ev) {
+                        if (wifiProcess != null) {
+                            wifiProcess.destroy();
+                            wifiProcess = null;
+                        }
+                        wifiDialog = null;
+                    }
+                });
+
+                // 显示窗口
+                wifiDialog.setLocationRelativeTo(MainFrame.getMainFrame());
+                wifiDialog.setVisible(true);
+
+                // 执行 WifiTools 并实时输出日志
+                new Thread(() -> {
+                    try {
+                        // 执行 WifiTools.autoConncetIPV4()
+                        String adbCmd = ConstService.ADB_PATH + "adb.exe";
+                        
+                        // 先获取设备列表
+                        ProcessBuilder devicesPb = new ProcessBuilder(adbCmd, "devices");
+                        devicesPb.redirectErrorStream(true);
+                        Process devicesProcess = devicesPb.start();
+                        java.io.BufferedReader devicesReader = new java.io.BufferedReader(
+                                new java.io.InputStreamReader(devicesProcess.getInputStream(), Charset.forName("GBK")));
+                        StringBuilder devicesOutput = new StringBuilder();
+                        String line;
+                        while ((line = devicesReader.readLine()) != null) {
+                            devicesOutput.append(line).append("\n");
+                        }
+                        final String devicesStr = devicesOutput.toString();
+                        SwingUtilities.invokeLater(() -> {
+                            logTextArea.append("=== Devices ===\n");
+                            logTextArea.append(devicesStr);
+                            logTextArea.append("\n");
+                        });
+
+                        // 获取 USB 连接的设备
+                        String[] lines = devicesStr.split("\n");
+                        java.util.List<String> usbDevices = new java.util.ArrayList<>();
+                        for (String dev : lines) {
+                            if (!dev.contains("List of devices attached") && !dev.trim().isEmpty()) {
+                                String devAddr = dev.replace("device", "").trim();
+                                if (!devAddr.contains(":") || devAddr.contains("offline")) {
+                                    usbDevices.add(devAddr);
+                                }
+                            }
+                        }
+
+                        if (usbDevices.isEmpty()) {
+                            SwingUtilities.invokeLater(() -> {
+                                logTextArea.append("No USB devices found!\n");
+                            });
+                            return;
+                        }
+
+                        for (String deviceName : usbDevices) {
+                            // 获取设备 IP
+                            ProcessBuilder ipPb = new ProcessBuilder(adbCmd, "-s", deviceName, "shell", "ip", "route");
+                            ipPb.redirectErrorStream(true);
+                            Process ipProcess = ipPb.start();
+                            java.io.BufferedReader ipReader = new java.io.BufferedReader(
+                                    new java.io.InputStreamReader(ipProcess.getInputStream(), Charset.forName("GBK")));
+                            StringBuilder ipOutput = new StringBuilder();
+                            while ((line = ipReader.readLine()) != null) {
+                                ipOutput.append(line).append("\n");
+                            }
+                            String ipOut = ipOutput.toString();
+                            String ip = "";
+                            if (ipOut.contains("src ")) {
+                                ip = ipOut.substring(ipOut.indexOf("src ") + 4).trim().split(" ")[0];
+                            }
+
+                            final String finalIp = ip;
+
+                            if (ip.isEmpty()) {
+                                SwingUtilities.invokeLater(() -> {
+                                    logTextArea.append("[" + deviceName + "] Failed to get IP\n");
+                                });
+                                continue;
+                            }
+
+                            SwingUtilities.invokeLater(() -> {
+                                logTextArea.append("=== Processing " + deviceName + " (IP: " + finalIp + ") ===\n");
+                            });
+
+                            // 设置 TCPIP 模式
+                            String port = WifiTools.randomPort();
+                            ProcessBuilder tcpipPb = new ProcessBuilder(adbCmd, "-s", deviceName, "tcpip", port);
+                            tcpipPb.redirectErrorStream(true);
+                            Process tcpipProcess = tcpipPb.start();
+                            java.io.BufferedReader tcpipReader = new java.io.BufferedReader(
+                                    new java.io.InputStreamReader(tcpipProcess.getInputStream(), Charset.forName("GBK")));
+                            StringBuilder tcpipOutput = new StringBuilder();
+                            while ((line = tcpipReader.readLine()) != null) {
+                                tcpipOutput.append(line).append("\n");
+                            }
+                            final String tcpipStr = tcpipOutput.toString();
+                            SwingUtilities.invokeLater(() -> {
+                                logTextArea.append("[tcpip " + port + "] " + tcpipStr);
+                            });
+
+                            // 连接无线调试
+                            String connectAddr = ip + ":" + port;
+                            ProcessBuilder connectPb = new ProcessBuilder(adbCmd, "connect", connectAddr);
+                            connectPb.redirectErrorStream(true);
+                            Process connectProcess = connectPb.start();
+                            java.io.BufferedReader connectReader = new java.io.BufferedReader(
+                                    new java.io.InputStreamReader(connectProcess.getInputStream(), Charset.forName("GBK")));
+                            StringBuilder connectOutput = new StringBuilder();
+                            while ((line = connectReader.readLine()) != null) {
+                                connectOutput.append(line).append("\n");
+                            }
+                            final String connectStr = connectOutput.toString();
+                            SwingUtilities.invokeLater(() -> {
+                                logTextArea.append("[connect " + connectAddr + "] " + connectStr);
+                                logTextArea.append("\n");
+                            });
+                        }
+
+                        // 最终设备列表
+                        SwingUtilities.invokeLater(() -> {
+                            logTextArea.append("=== Final Devices ===\n");
+                        });
+                        ProcessBuilder finalPb = new ProcessBuilder(adbCmd, "devices");
+                        finalPb.redirectErrorStream(true);
+                        Process finalProcess = finalPb.start();
+                        java.io.BufferedReader finalReader = new java.io.BufferedReader(
+                                new java.io.InputStreamReader(finalProcess.getInputStream(), Charset.forName("GBK")));
+                        while ((line = finalReader.readLine()) != null) {
+                            final String finalLine = line;
+                            SwingUtilities.invokeLater(() -> {
+                                logTextArea.append(finalLine + "\n");
+                            });
+                        }
+
+                    } catch (Exception ex) {
+                        Logger.error("wifi debug error: " + ex.getMessage());
+                        SwingUtilities.invokeLater(() -> {
+                            logTextArea.append("Error: " + ex.getMessage() + "\n");
+                        });
+                    }
+                }).start();
             }
         });
 
@@ -334,6 +538,7 @@ public class TopPanel extends JPanel {
 
 
         leftPanel.add(swi);
+        leftPanel.add(wifi);
         leftPanel.add(readme);
         rightPanel.add(mlog);
         rightPanel.add(log);
