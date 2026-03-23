@@ -22,7 +22,7 @@ public class BottomPanel extends JPanel {
         setPreferredSize(new Dimension(0, 25));
 
         // 添加链接
-        JLabel auth = GuiTools.createLinkLabelNoUnderline("v1.0.0 | auth©tangyufan", ConstService.FONT_NORMAL, ConstService.COLOR_BLACK);
+        JLabel auth = GuiTools.createLinkLabelNoUnderline("v1.0.0 | auth©tangyufan", ConstService.FONT_SMALL, ConstService.THEME_TEXT_SECONDARY);
         this.add(auth);
 
     }

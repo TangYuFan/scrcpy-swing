@@ -55,29 +55,62 @@ public final class ConstService {
 
     public static final String MAIN_TITLE = "Mobile";  // 主窗体名称
     public static final Icon MAIN_ICON = IconsTools.app;    // 主窗体图标
-    public static final int MAIN_WIDTH = 420;     // 主窗体宽
-    public static final int MAIN_HEIGHT = 800;    // 主窗体高
+    public static final int MAIN_WIDTH = 350;     // 主窗体宽
+    public static final int MAIN_HEIGHT = 700;    // 主窗体高
     /** 是否启用窗口自动适应手机分辨率（去掉黑边） */
-    public static final boolean AUTO_RESIZE_WINDOW = true;
+    public static final boolean AUTO_RESIZE_WINDOW = false;
     /** 窗口最大宽度（0 = 不限制） */
     public static final int MAX_WINDOW_WIDTH = 0;
     /** 窗口最大高度（0 = 不限制） */
     public static final int MAX_WINDOW_HEIGHT = 0;
 
 
-    public static final String DEFAULT_FONT_NAME = "微软雅黑";
+    public static final String DEFAULT_FONT_NAME = "Microsoft YaHei UI";
 
-    public static final Font FONT_NORMAL = new Font(DEFAULT_FONT_NAME, Font.PLAIN, 13);
-    public static final Font FONT_BOLD = new Font(DEFAULT_FONT_NAME, Font.BOLD, 13);
-    public static final Font FONT_TITLE = new Font(DEFAULT_FONT_NAME, Font.BOLD, 13);
-    public static final Font FONT_SMALL = new Font(DEFAULT_FONT_NAME, Font.PLAIN, 13);
+    public static final Font FONT_NORMAL = new Font(DEFAULT_FONT_NAME, Font.PLAIN, 12);
+    public static final Font FONT_BOLD = new Font(DEFAULT_FONT_NAME, Font.BOLD, 12);
+    public static final Font FONT_TITLE = new Font(DEFAULT_FONT_NAME, Font.BOLD, 12);
+    public static final Font FONT_SMALL = new Font(DEFAULT_FONT_NAME, Font.PLAIN, 11);
 
-    public static final Color COLOR_BG = new Color(250, 250, 250);  // 背景色
-    public static final Color COLOR_TITLE = new Color(40, 40, 40);  // 标题文字颜色
-    public static final Color COLOR_BORDER = new Color(220, 220, 220);  // 边框颜色
-    public static final Color COLOR_ACCENT = new Color(30, 144, 255); // 蓝色主题点缀
-    public static final Color COLOR_BLACK = Color.BLACK; // 黑
-    public static final Color COLOR_LIGHT_GRAY = Color.lightGray; // 黑
+    // ================================================================
+    // 现代主题配色 (Modern Theme Colors)
+    // ================================================================
+    /** 主色调 - 现代蓝 */
+    public static final Color THEME_PRIMARY = new Color(30, 136, 229);
+    /** 次要色 - 青色 */
+    public static final Color THEME_SECONDARY = new Color(38, 166, 154);
+    /** 主背景 - 浅灰白 */
+    public static final Color THEME_BG = new Color(245, 245, 245);
+    /** 表面色 - 纯白 */
+    public static final Color THEME_SURFACE = new Color(255, 255, 255);
+    /** 主文字 - 深灰 */
+    public static final Color THEME_TEXT_PRIMARY = new Color(33, 33, 33);
+    /** 次要文字 - 中灰 */
+    public static final Color THEME_TEXT_SECONDARY = new Color(117, 117, 117);
+    /** 边框色 - 浅灰 */
+    public static final Color THEME_BORDER = new Color(224, 224, 224);
+    /** 强调色 - 亮蓝 */
+    public static final Color THEME_ACCENT = new Color(33, 150, 243);
+    /** 悬停背景 - 淡蓝 */
+    public static final Color THEME_HOVER = new Color(187, 222, 251);
+    /** 按下背景 - 更深蓝 */
+    public static final Color THEME_PRESSED = new Color(100, 181, 246);
+    /** 成功色 - 绿色 */
+    public static final Color THEME_SUCCESS = new Color(76, 175, 80);
+    /** 警告色 - 橙色 */
+    public static final Color THEME_WARNING = new Color(255, 152, 0);
+    /** 错误色 - 红色 */
+    public static final Color THEME_ERROR = new Color(244, 67, 54);
+    /** 内容区背景 - 柔和灰 */
+    public static final Color THEME_CONTENT_BG = new Color(238, 238, 238);
+
+    // 兼容旧颜色常量（保留以避免其他地方报错）
+    public static final Color COLOR_BG = THEME_BG;
+    public static final Color COLOR_TITLE = THEME_TEXT_PRIMARY;
+    public static final Color COLOR_BORDER = THEME_BORDER;
+    public static final Color COLOR_ACCENT = THEME_PRIMARY;
+    public static final Color COLOR_BLACK = THEME_TEXT_PRIMARY;
+    public static final Color COLOR_LIGHT_GRAY = new Color(224, 224, 224);
 
 
     public static final int PADDING = 10;

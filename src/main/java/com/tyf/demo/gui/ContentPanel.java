@@ -41,7 +41,7 @@ public class ContentPanel extends JPanel {
 
     public ContentPanel() {
         setLayout(new BorderLayout());
-        setBackground(new Color(220, 220, 220));
+        setBackground(ConstService.THEME_CONTENT_BG);
         setPreferredSize(new Dimension(ConstService.MAIN_WIDTH, ConstService.MAIN_HEIGHT));
 
         // 初始化点击效果执行器
@@ -423,8 +423,6 @@ public class ContentPanel extends JPanel {
             if (shouldCloseLoading && loadingDialog != null) {
                 loadingDialog.dispose();
                 loadingDialog = null;
-                // 第一帧渲染成功，连接已建立，显示侧边按钮
-                MainPanel.getMainPanel().showSideButtonPanel();
             }
 
             // 确保焦点在 ContentPanel 上

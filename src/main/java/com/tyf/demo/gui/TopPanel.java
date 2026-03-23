@@ -44,10 +44,10 @@ public class TopPanel extends JPanel {
         JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 2));
         rightPanel.setOpaque(false);
 
-        JLabel swi = GuiTools.createLinkLabel("Switch", ConstService.FONT_NORMAL, ConstService.COLOR_BLACK);
-        JLabel readme = GuiTools.createLinkLabel("Info", ConstService.FONT_NORMAL, ConstService.COLOR_BLACK);
-        JLabel log = GuiTools.createLinkLabel("Log", ConstService.FONT_NORMAL, ConstService.COLOR_BLACK);
-        JLabel mlog = GuiTools.createLinkLabel("MLog", ConstService.FONT_NORMAL, ConstService.COLOR_BLACK);
+        JLabel swi = GuiTools.createLinkLabel("Switch", ConstService.FONT_NORMAL, ConstService.THEME_PRIMARY);
+        JLabel readme = GuiTools.createLinkLabel("Info", ConstService.FONT_NORMAL, ConstService.THEME_PRIMARY);
+        JLabel log = GuiTools.createLinkLabel("Log", ConstService.FONT_NORMAL, ConstService.THEME_PRIMARY);
+        JLabel mlog = GuiTools.createLinkLabel("MLog", ConstService.FONT_NORMAL, ConstService.THEME_PRIMARY);
 
 
         // 打开日志路径

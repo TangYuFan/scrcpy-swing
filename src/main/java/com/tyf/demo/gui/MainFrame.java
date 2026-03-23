@@ -43,6 +43,7 @@ public class MainFrame extends JFrame {
             @Override
             public void windowClosing(WindowEvent e) {
                 ScrcpyService.shutdown();
+                ToolWindow.disposeToolWindow();
             }
         });
     }
@@ -91,19 +92,9 @@ public class MainFrame extends JFrame {
             Dimension currentSize = mainFrame.getSize();
             Dimension currentContent = mainFrame.getContentPane().getSize();
 
-            // 根据横竖屏确定目标内容尺寸（固定值，不跟随手机分辨率）
-            int targetContentW, targetContentH;
-            if (w > h) {
-                // 横屏
-                targetContentW = ConstService.MAIN_HEIGHT;
-                targetContentH = ConstService.MAIN_WIDTH;
-            } else {
-                // 竖屏
-                targetContentW = ConstService.MAIN_WIDTH;
-                targetContentH = ConstService.MAIN_HEIGHT;
-            }
+            int targetContentW = w;
+            int targetContentH = h;
 
-            // 如果内容区尺寸没变化则跳过
             if (currentContent.width == targetContentW && currentContent.height == targetContentH) {
                 return;
             }
@@ -111,14 +102,12 @@ public class MainFrame extends JFrame {
             int newWindowW = targetContentW + insets.left + insets.right;
             int newWindowH = targetContentH + insets.top + insets.bottom;
 
-            // 限制最大尺寸
             Dimension maxSize = mainFrame.getMaximumSize();
             if (maxSize.width > 0) newWindowW = Math.min(newWindowW, maxSize.width);
             if (maxSize.height > 0) newWindowH = Math.min(newWindowH, maxSize.height);
 
             if (currentSize.width == newWindowW && currentSize.height == newWindowH) return;
 
-            // 保持窗口居中
             Point center = mainFrame.getLocation();
             mainFrame.setSize(newWindowW, newWindowH);
             mainFrame.setLocation(center.x + (currentSize.width - newWindowW) / 2, 

@@ -3,9 +3,11 @@ package com.tyf.demo.service;
 import com.tyf.demo.entity.Device;
 import com.tyf.demo.gui.MainFrame;
 import com.tyf.demo.gui.MainPanel;
+import com.tyf.demo.gui.ToolWindow;
 import com.tyf.demo.util.CmdTools;
 import org.pmw.tinylog.Logger;
 
+import javax.swing.*;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -464,6 +466,11 @@ public final class ScrcpyService {
         String deviceId = activeDeviceId;
         if (deviceId != null) {
             ControlService.startControlWithSocket(controlSocketLocal, deviceId);
+            
+            // 连接成功后显示浮动工具窗口
+            SwingUtilities.invokeLater(() -> {
+                com.tyf.demo.gui.ToolWindow.showToolWindow(com.tyf.demo.gui.MainFrame.getMainFrame());
+            });
         }
 
         // 步骤 3：视频解码主循环
