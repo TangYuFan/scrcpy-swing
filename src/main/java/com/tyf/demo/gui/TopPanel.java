@@ -111,6 +111,7 @@ public class TopPanel extends JPanel {
                     "  Ctrl+P          - 电源键\n" +
                     "  Ctrl+N          - 展开通知面板\n" +
                     "  Ctrl+Shift+N    - 折叠面板\n" +
+                    "  Ctrl+L          - 切换 游戏映射/正常 模式\n" +
                     "  Ctrl+Up         - 音量+\n" +
                     "  Ctrl+Down       - 音量-\n" +
                     "  ESC             - 返回键\n" +

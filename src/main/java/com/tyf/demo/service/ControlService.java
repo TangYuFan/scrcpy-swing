@@ -108,7 +108,7 @@ public final class ControlService {
     public static void updateVideoSize(int width, int height) {
         currentVideoWidth = width;
         currentVideoHeight = height;
-        Logger.debug("control: video size " + width + "x" + height);
+        // Logger.debug("control: video size " + width + "x" + height);
     }
 
     public static void setVideoRotation(boolean rotation) {
@@ -121,8 +121,12 @@ public final class ControlService {
      *   @date : 2026-03-21
      */
     public static void sendTouchDown(int x, int y, int actionButton) {
-        sendTouch(ControlMessage.ACTION_DOWN_TOUCH, x, y, actionButton, ControlMessage.AMOTION_EVENT_BUTTON_PRIMARY);
+        sendTouchDown(ControlMessage.POINTER_ID_MOUSE, x, y, actionButton);
         isDragging = true;
+    }
+
+    public static void sendTouchDown(long pointerId, int x, int y, int actionButton) {
+        sendTouch(pointerId, ControlMessage.ACTION_DOWN_TOUCH, x, y, actionButton, ControlMessage.AMOTION_EVENT_BUTTON_PRIMARY);
     }
 
     /**
@@ -131,8 +135,12 @@ public final class ControlService {
      *   @date : 2026-03-21
      */
     public static void sendTouchUp(int x, int y) {
-        sendTouch(ControlMessage.ACTION_UP_TOUCH, x, y, 0, ControlMessage.AMOTION_EVENT_BUTTON_PRIMARY);
+        sendTouchUp(ControlMessage.POINTER_ID_MOUSE, x, y);
         isDragging = false;
+    }
+
+    public static void sendTouchUp(long pointerId, int x, int y) {
+        sendTouch(pointerId, ControlMessage.ACTION_UP_TOUCH, x, y, 0, ControlMessage.AMOTION_EVENT_BUTTON_PRIMARY);
     }
 
     /**
@@ -141,7 +149,11 @@ public final class ControlService {
      *   @date : 2026-03-21
      */
     public static void sendTouchMove(int x, int y) {
-        sendTouch(ControlMessage.ACTION_MOVE_TOUCH, x, y, 0, ControlMessage.AMOTION_EVENT_BUTTON_PRIMARY);
+        sendTouchMove(ControlMessage.POINTER_ID_MOUSE, x, y);
+    }
+
+    public static void sendTouchMove(long pointerId, int x, int y) {
+        sendTouch(pointerId, ControlMessage.ACTION_MOVE_TOUCH, x, y, 0, ControlMessage.AMOTION_EVENT_BUTTON_PRIMARY);
     }
 
     /**
@@ -150,7 +162,7 @@ public final class ControlService {
      *   @date : 2026-03-21
      */
     public static void sendTouchDownRight(int x, int y) {
-        sendTouch(ControlMessage.ACTION_DOWN_TOUCH, x, y, ControlMessage.AMOTION_EVENT_BUTTON_SECONDARY, ControlMessage.AMOTION_EVENT_BUTTON_SECONDARY);
+        sendTouch(ControlMessage.POINTER_ID_MOUSE, ControlMessage.ACTION_DOWN_TOUCH, x, y, ControlMessage.AMOTION_EVENT_BUTTON_SECONDARY, ControlMessage.AMOTION_EVENT_BUTTON_SECONDARY);
     }
 
     /**
@@ -159,14 +171,13 @@ public final class ControlService {
      *   @date : 2026-03-21
      */
     public static void sendTouchUpRight(int x, int y) {
-        sendTouch(ControlMessage.ACTION_UP_TOUCH, x, y, 0, ControlMessage.AMOTION_EVENT_BUTTON_SECONDARY);
+        sendTouch(ControlMessage.POINTER_ID_MOUSE, ControlMessage.ACTION_UP_TOUCH, x, y, 0, ControlMessage.AMOTION_EVENT_BUTTON_SECONDARY);
     }
 
-    private static void sendTouch(int action, int x, int y, int actionButton, int buttons) {
+    private static void sendTouch(long pointerId, int action, int x, int y, int actionButton, int buttons) {
         ControlChannel ch = controlChannel.get();
         if (ch == null) {
-            Logger.debug("control: sendTouch skipped - channel is null");
-            Logger.debug("control: available sockets - controlSocket=" + controlSocket.get() + " controlChannel=" + controlChannel.get());
+            // 高频路径不打日志，避免实时输入被 I/O 拖慢
             return;
         }
 
@@ -181,7 +192,7 @@ public final class ControlService {
             float pressure = (action == ControlMessage.ACTION_MOVE_TOUCH) ? 0.5f : 1.0f;
             ControlMessage msg = ControlMessage.createInjectTouchEvent(
                     action,
-                    ControlMessage.POINTER_ID_MOUSE,
+                    pointerId,
                     x, y,
                     sw, sh,
                     pressure,
@@ -203,7 +214,6 @@ public final class ControlService {
     public static void sendScroll(int x, int y, float hScroll, float vScroll) {
         ControlChannel ch = controlChannel.get();
         if (ch == null) {
-            Logger.debug("control: sendScroll skipped - channel is null");
             return;
         }
 
@@ -221,7 +231,7 @@ public final class ControlService {
                     hScroll, vScroll,
                     ControlMessage.AMOTION_EVENT_BUTTON_PRIMARY
             );
-            Logger.debug("control: sendScroll x=" + x + " y=" + y + " hScroll=" + hScroll + " vScroll=" + vScroll);
+            // Logger.debug("control: sendScroll x=" + x + " y=" + y + " hScroll=" + hScroll + " vScroll=" + vScroll);
             ch.send(msg);
         } catch (IOException e) {
             Logger.error("control: send scroll failed - " + e.getMessage());

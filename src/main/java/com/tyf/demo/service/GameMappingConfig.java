@@ -1,5 +1,6 @@
 package com.tyf.demo.service;
 
+import com.tyf.demo.gui.MainFrame;
 import com.tyf.demo.service.mapping.AbstractBuiltinMapping;
 import com.tyf.demo.service.mapping.BuiltinMappingRegistry;
 import org.pmw.tinylog.Logger;
@@ -78,6 +79,22 @@ public class GameMappingConfig {
         }
     }
 
+    /** 键盘触发时的按键行为：点按一次 or 按住生效松开取消 */
+    public enum KeyboardPressMode {
+        TAP("点按"),
+        HOLD("长按");
+
+        private final String desc;
+
+        KeyboardPressMode(String desc) {
+            this.desc = desc;
+        }
+
+        public String getDesc() {
+            return desc;
+        }
+    }
+
     public static class MappingEntry {
         private String id;
         /** 内置映射稳定 ID，与 {@link com.tyf.demo.service.mapping.BuiltinMappingIds} 对应 */
@@ -88,6 +105,7 @@ public class GameMappingConfig {
         private MappingType type;
         private TriggerType triggerType;
         private MousePressMode mousePressMode = MousePressMode.NONE;
+        private KeyboardPressMode keyboardPressMode = KeyboardPressMode.TAP;
 
         private int keyCode;
         private String keyName;
@@ -169,6 +187,14 @@ public class GameMappingConfig {
             this.mousePressMode = mousePressMode != null ? mousePressMode : MousePressMode.NONE;
         }
 
+        public KeyboardPressMode getKeyboardPressMode() {
+            return keyboardPressMode != null ? keyboardPressMode : KeyboardPressMode.TAP;
+        }
+
+        public void setKeyboardPressMode(KeyboardPressMode keyboardPressMode) {
+            this.keyboardPressMode = keyboardPressMode != null ? keyboardPressMode : KeyboardPressMode.TAP;
+        }
+
         public int getKeyCode() {
             return keyCode;
         }
@@ -239,7 +265,11 @@ public class GameMappingConfig {
                 return "W A S D";
             }
             if (triggerType == TriggerType.KEYBOARD) {
-                return keyName != null && !keyName.isEmpty() ? keyName : "未设置";
+                String key = keyName != null && !keyName.isEmpty() ? keyName : "未设置";
+                if (type == MappingType.CLICK) {
+                    return key + "·" + getKeyboardPressMode().getDesc();
+                }
+                return key;
             }
             if (triggerType == TriggerType.MOUSE_LEFT) {
                 if (mousePressMode == MousePressMode.TAP) {
@@ -276,6 +306,12 @@ public class GameMappingConfig {
         
         if (!mode) {
             GameMappingService.resetState();
+        } else {
+            java.awt.EventQueue.invokeLater(() -> {
+                if (MainFrame.getMainFrame() != null && MainFrame.getMainFrame().getContentPanel() != null) {
+                    MainFrame.getMainFrame().getContentPanel().requestFocusInWindow();
+                }
+            });
         }
     }
 
@@ -300,6 +336,21 @@ public class GameMappingConfig {
         for (MappingEntry m : mappings) {
             if (m.getBuiltinId() != null && !m.getBuiltinId().isEmpty()) {
                 byBuiltin.put(m.getBuiltinId(), m);
+            }
+        }
+        // 兼容旧版本：将「开火(点按/长按)」合并映射到新的「开火」
+        if (!byBuiltin.containsKey(com.tyf.demo.service.mapping.BuiltinMappingIds.FIRE)) {
+            MappingEntry legacy = byBuiltin.get(com.tyf.demo.service.mapping.BuiltinMappingIds.FIRE_LONG);
+            if (legacy == null) {
+                legacy = byBuiltin.get(com.tyf.demo.service.mapping.BuiltinMappingIds.FIRE_TAP);
+            }
+            if (legacy != null) {
+                legacy.setBuiltinId(com.tyf.demo.service.mapping.BuiltinMappingIds.FIRE);
+                legacy.setId(com.tyf.demo.service.mapping.BuiltinMappingIds.FIRE);
+                legacy.setName("开火");
+                legacy.setTriggerType(TriggerType.MOUSE_LEFT);
+                legacy.setMousePressMode(MousePressMode.NONE);
+                byBuiltin.put(com.tyf.demo.service.mapping.BuiltinMappingIds.FIRE, legacy);
             }
         }
         List<MappingEntry> next = new ArrayList<>();
@@ -364,6 +415,18 @@ public class GameMappingConfig {
             }
             if (entry.getTriggerType() == TriggerType.MOUSE_LEFT
                     && entry.getMousePressMode() == MousePressMode.LONG_PRESS) {
+                return entry;
+            }
+        }
+        return null;
+    }
+
+    public static MappingEntry findMappingByMouseLeft() {
+        for (MappingEntry entry : mappings) {
+            if (!entry.isEnabled()) {
+                continue;
+            }
+            if (entry.getType() == MappingType.CLICK && entry.getTriggerType() == TriggerType.MOUSE_LEFT) {
                 return entry;
             }
         }

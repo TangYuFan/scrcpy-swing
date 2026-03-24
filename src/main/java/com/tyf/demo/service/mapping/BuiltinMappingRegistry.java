@@ -14,8 +14,7 @@ public final class BuiltinMappingRegistry {
     private static final List<AbstractBuiltinMapping> ORDERED = Collections.unmodifiableList(Arrays.asList(
             new WasdJoystickMapping(),
             new MouseViewMapping(),
-            new FireTapMapping(),
-            new FireLongMapping(),
+            new FireMapping(),
             new AimMapping(),
             new JumpMapping(),
             new CrouchMapping(),

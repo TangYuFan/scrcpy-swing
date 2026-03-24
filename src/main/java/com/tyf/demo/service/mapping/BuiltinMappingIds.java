@@ -11,6 +11,7 @@ public final class BuiltinMappingIds {
 
     public static final String WASD_JOYSTICK = "fps_wasd_joystick";
     public static final String MOUSE_VIEW = "fps_mouse_view";
+    public static final String FIRE = "fps_fire";
     public static final String FIRE_TAP = "fps_fire_tap";
     public static final String FIRE_LONG = "fps_fire_long";
     public static final String AIM = "fps_aim";

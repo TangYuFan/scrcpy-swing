@@ -1,10 +1,12 @@
 package com.tyf.demo.gui;
 
 import com.tyf.demo.service.ConstService;
+import com.tyf.demo.service.GameMappingConfig;
 import com.tyf.demo.service.ScrcpyService;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.KeyEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 
@@ -35,6 +37,7 @@ public class MainFrame extends JFrame {
         this.pack();
         this.setLocationRelativeTo(null);
         mainFrame = this;
+        registerGlobalMappingHotkey();
 
         addWindowListener(new WindowAdapter() {
             @Override
@@ -47,6 +50,33 @@ public class MainFrame extends JFrame {
 
     public static MainFrame getMainFrame() {
         return mainFrame;
+    }
+
+    /**
+     *   @desc : 注册应用级快捷键 Ctrl+L，强制切换游戏映射模式
+     *   @auth : tyf
+     *   @date : 2026-03-20
+     */
+    private void registerGlobalMappingHotkey() {
+        KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventDispatcher(e -> {
+            // 游戏模式下全局吞掉字符输入事件，避免输入法候选弹出
+            if (GameMappingConfig.isMappingMode() && e.getID() == KeyEvent.KEY_TYPED) {
+                return true;
+            }
+            if (e.getID() != KeyEvent.KEY_PRESSED) {
+                return false;
+            }
+            if (e.getKeyCode() == KeyEvent.VK_L && (e.getModifiersEx() & KeyEvent.CTRL_DOWN_MASK) != 0) {
+                GameMappingConfig.toggleMappingMode();
+                boolean isGame = GameMappingConfig.isMappingMode();
+                ToolWindow.updateMappingButtonIfExists(isGame);
+                if (isGame && getContentPanel() != null) {
+                    getContentPanel().requestFocusInWindow();
+                }
+                return true;
+            }
+            return false;
+        });
     }
 
     public ContentPanel getContentPanel() {

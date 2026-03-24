@@ -19,6 +19,7 @@ public class ToolWindow extends JDialog {
     private static ToolWindow instance;
     private static JFrame ownerFrame;
     private static ComponentListener positionSyncListener;
+    private static JToggleButton mappingModeButton;
 
     private ToolWindow(JFrame owner) {
         super(owner, "", Dialog.ModalityType.MODELESS);
@@ -77,6 +78,7 @@ public class ToolWindow extends JDialog {
 
         gbc.gridy++;
         JToggleButton mappingModeBtn = new JToggleButton();
+        mappingModeButton = mappingModeBtn;
         mappingModeBtn.setFocusable(false);
         mappingModeBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
         mappingModeBtn.setToolTipText("点击切换游戏映射模式");
@@ -220,6 +222,7 @@ public class ToolWindow extends JDialog {
         if (instance != null) {
             instance.dispose();
             instance = null;
+            mappingModeButton = null;
         }
     }
 
@@ -240,22 +243,10 @@ public class ToolWindow extends JDialog {
     }
 
     public static void updateMappingButtonIfExists(boolean isGameMode) {
-        if (instance == null) return;
-        Component[] comps = instance.getContentPane().getComponents();
-        for (Component c : comps) {
-            if (c instanceof JPanel) {
-                JPanel panel = (JPanel) c;
-                for (Component child : panel.getComponents()) {
-                    if (child instanceof JToggleButton) {
-                        JToggleButton btn = (JToggleButton) child;
-                        if ("游戏".equals(btn.getText()) || "普通".equals(btn.getText())) {
-                            btn.setSelected(isGameMode);
-                            updateMappingButton(btn);
-                            return;
-                        }
-                    }
-                }
-            }
+        if (mappingModeButton == null) {
+            return;
         }
+        mappingModeButton.setSelected(isGameMode);
+        updateMappingButton(mappingModeButton);
     }
 }

@@ -69,6 +69,19 @@ public final class MappingEditUiFactory {
         JTextField sensField = new JTextField(String.valueOf(entry.getMouseSensitivity()), 6);
         JTextField keyField = new JTextField(
                 entry.getKeyName() != null ? entry.getKeyName() : KeyMappingUtil.keyCodeToDisplay(entry.getKeyCode()), 12);
+        JComboBox<GameMappingConfig.KeyboardPressMode> keyboardPressModeCombo =
+                new JComboBox<>(GameMappingConfig.KeyboardPressMode.values());
+        keyboardPressModeCombo.setSelectedItem(entry.getKeyboardPressMode());
+        keyboardPressModeCombo.setRenderer(new DefaultListCellRenderer() {
+            @Override
+            public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
+                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+                if (value instanceof GameMappingConfig.KeyboardPressMode) {
+                    setText(((GameMappingConfig.KeyboardPressMode) value).getDesc());
+                }
+                return this;
+            }
+        });
 
         if (type == MappingType.JOYSTICK_WASD) {
             addRowWithPicker(form, gbc, row++, "摇杆中心 X(0~1):", xField, yField);
@@ -91,6 +104,7 @@ public final class MappingEditUiFactory {
         } else if (type == MappingType.CLICK) {
             if (entry.getTriggerType() == GameMappingConfig.TriggerType.KEYBOARD) {
                 addRow(form, gbc, row++, "键盘键位:", keyField);
+                addRow(form, gbc, row++, "键位模式:", keyboardPressModeCombo);
                 JLabel kt = new JLabel("<html><span style='color:gray;font-size:11px;'>如 A、空格填 SPACE、F1 等</span></html>");
                 gbc.gridx = 0;
                 gbc.gridy = row;
@@ -106,6 +120,7 @@ public final class MappingEditUiFactory {
         limitW(rField);
         limitW(sensField);
         limitW(keyField);
+        limitW(keyboardPressModeCombo);
 
         if (xField.getParent() instanceof JPanel) {
             ((JPanel) xField.getParent()).revalidate();
@@ -126,7 +141,7 @@ public final class MappingEditUiFactory {
 
         ok.addActionListener(e -> {
             try {
-                applyToEntry(entry, type, xField, yField, rField, sensField, keyField);
+                applyToEntry(entry, type, xField, yField, rField, sensField, keyField, keyboardPressModeCombo);
             } catch (IllegalArgumentException ex) {
                 JOptionPane.showMessageDialog(dlg,
                         ex.getMessage() != null ? ex.getMessage() : "请输入有效数字",
@@ -155,7 +170,8 @@ public final class MappingEditUiFactory {
 
     private static void applyToEntry(MappingEntry entry, MappingType type,
             JTextField xField, JTextField yField, JTextField rField,
-            JTextField sensField, JTextField keyField) {
+            JTextField sensField, JTextField keyField,
+            JComboBox<GameMappingConfig.KeyboardPressMode> keyboardPressModeCombo) {
         if (type == MappingType.JOYSTICK_WASD) {
             entry.setPhoneX(parse01(xField.getText()));
             entry.setPhoneY(parse01(yField.getText()));
@@ -171,6 +187,7 @@ public final class MappingEditUiFactory {
                 }
                 entry.setKeyCode(kc);
                 entry.setKeyName(KeyMappingUtil.keyCodeToDisplay(kc));
+                entry.setKeyboardPressMode((GameMappingConfig.KeyboardPressMode) keyboardPressModeCombo.getSelectedItem());
             }
             entry.setPhoneX(parse01(xField.getText()));
             entry.setPhoneY(parse01(yField.getText()));

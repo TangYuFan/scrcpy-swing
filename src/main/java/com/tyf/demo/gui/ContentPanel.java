@@ -11,6 +11,7 @@ import org.pmw.tinylog.Logger;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
+import java.awt.event.InputMethodEvent;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferByte;
 import java.util.ArrayList;
@@ -22,6 +23,9 @@ import java.util.concurrent.TimeUnit;
 
 public class ContentPanel extends JPanel {
 
+    /** 游戏模式鼠标捕获区占视频区域比例（宽/高），用于限制在中心小区域内循环 */
+    private static final double MOUSE_CAPTURE_RATIO = 0.38;
+
     private volatile BufferedImage frame;
     private static JDialog loadingDialog;
     private volatile int currentWidth;
@@ -30,11 +34,18 @@ public class ContentPanel extends JPanel {
 
     private final List<ClickEffect> clickEffects = new ArrayList<>();
     private ScheduledExecutorService effectExecutor;
+    // 游戏模式视角转换的鼠标状态（mouseMoved + mouseDragged 共用）
+    private Point gameLastMousePos;
+    private boolean gameCursorHidden = false;
+    private java.awt.Robot gameRobot;
 
     public ContentPanel() {
         setLayout(new BorderLayout());
         setBackground(ConstService.THEME_CONTENT_BG);
         setPreferredSize(new Dimension(ConstService.MAIN_WIDTH, ConstService.MAIN_HEIGHT));
+        // 游戏模式按键不应进入输入法通道（WASD 触发拼音候选等）
+        setFocusTraversalKeysEnabled(false);
+        enableInputMethods(false);
 
         effectExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "click-effect");
@@ -77,6 +88,7 @@ public class ContentPanel extends JPanel {
             @Override
             public void mousePressed(MouseEvent e) {
                 if (GameMappingConfig.isMappingMode()) {
+                    requestFocusInWindow();
                     GameMappingService.handleMousePressed(e.getButton());
                     return;
                 }
@@ -116,6 +128,7 @@ public class ContentPanel extends JPanel {
             @Override
             public void mouseDragged(MouseEvent e) {
                 if (GameMappingConfig.isMappingMode()) {
+                    handleGameModeMouseMotion(e);
                     return;
                 }
 
@@ -126,78 +139,18 @@ public class ContentPanel extends JPanel {
         });
 
         addMouseMotionListener(new MouseMotionAdapter() {
-            private Point lastMousePos;
-            private boolean cursorHidden = false;
-            private java.awt.Robot robot;
-
             @Override
             public void mouseMoved(MouseEvent e) {
                 if (GameMappingConfig.isMappingMode()) {
-                    if (!cursorHidden) {
-                        setCursor(createTransparentCursor());
-                        cursorHidden = true;
-                        try {
-                            robot = new java.awt.Robot();
-                        } catch (Exception ex) {
-                            robot = null;
-                        }
-                    }
-
-                    if (!isPointInVideoArea(e.getPoint())) {
-                        lastMousePos = e.getPoint();
-                        return;
-                    }
-
-                    if (lastMousePos != null) {
-                        int deltaX = e.getX() - lastMousePos.x;
-                        int deltaY = e.getY() - lastMousePos.y;
-                        GameMappingService.handleMouseMoved(deltaX, deltaY);
-
-                        checkAndWarpMouse(e.getPoint());
-                    }
-                    lastMousePos = e.getPoint();
+                    handleGameModeMouseMotion(e);
                     return;
                 }
 
-                if (cursorHidden) {
+                if (gameCursorHidden) {
                     setCursor(Cursor.getPredefinedCursor(Cursor.DEFAULT_CURSOR));
-                    cursorHidden = false;
+                    gameCursorHidden = false;
                 }
-                lastMousePos = null;
-            }
-
-            private void checkAndWarpMouse(Point localPos) {
-                if (robot == null) return;
-
-                int pw = getWidth();
-                int ph = getHeight();
-                int margin = 30;
-                boolean needsWarp = false;
-                int newLocalX = localPos.x;
-                int newLocalY = localPos.y;
-
-                if (localPos.x <= margin) {
-                    newLocalX = pw - margin;
-                    needsWarp = true;
-                } else if (localPos.x >= pw - margin) {
-                    newLocalX = margin;
-                    needsWarp = true;
-                }
-
-                if (localPos.y <= margin) {
-                    newLocalY = ph - margin;
-                    needsWarp = true;
-                } else if (localPos.y >= ph - margin) {
-                    newLocalY = margin;
-                    needsWarp = true;
-                }
-
-                if (needsWarp) {
-                    Point p = new Point(newLocalX, newLocalY);
-                    SwingUtilities.convertPointToScreen(p, ContentPanel.this);
-                    robot.mouseMove(p.x, p.y);
-                    lastMousePos = new Point(newLocalX, newLocalY);
-                }
+                gameLastMousePos = null;
             }
         });
 
@@ -248,7 +201,25 @@ public class ContentPanel extends JPanel {
                 if (frame == null) return;
                 handleKeyReleased(e);
             }
+
+            @Override
+            public void keyTyped(KeyEvent e) {
+                // 游戏模式下吞掉字符事件，避免触发输入法候选
+                if (GameMappingConfig.isMappingMode()) {
+                    e.consume();
+                }
+            }
         });
+    }
+
+    @Override
+    protected void processInputMethodEvent(InputMethodEvent e) {
+        // 游戏模式下禁用输入法组合输入，避免 WASD 等触发候选框
+        if (GameMappingConfig.isMappingMode()) {
+            e.consume();
+            return;
+        }
+        super.processInputMethodEvent(e);
     }
 
     private Point convertToDevicePoint(Point componentPoint) {
@@ -286,27 +257,135 @@ public class ContentPanel extends JPanel {
     }
 
     private boolean isPointInVideoArea(Point componentPoint) {
-        if (frame == null) {
+        Rectangle vr = getVideoAreaRect();
+        if (vr == null) {
             return false;
         }
+        return componentPoint.x >= vr.x && componentPoint.x < vr.x + vr.width
+                && componentPoint.y >= vr.y && componentPoint.y < vr.y + vr.height;
+    }
 
+    private Rectangle getVideoAreaRect() {
+        if (frame == null) {
+            return null;
+        }
         int iw = frame.getWidth();
         int ih = frame.getHeight();
         int pw = getWidth();
         int ph = getHeight();
-
         if (pw <= 0 || ph <= 0 || iw <= 0 || ih <= 0) {
-            return false;
+            return null;
         }
-
         double scale = Math.min(1.0, Math.min((double) pw / iw, (double) ph / ih));
         int scaledW = (int) (iw * scale);
         int scaledH = (int) (ih * scale);
         int dx = (pw - scaledW) / 2;
         int dy = (ph - scaledH) / 2;
+        return new Rectangle(dx, dy, scaledW, scaledH);
+    }
 
-        return componentPoint.x >= dx && componentPoint.x < dx + scaledW &&
-               componentPoint.y >= dy && componentPoint.y < dy + scaledH;
+    /**
+     * @desc : 获取游戏模式鼠标捕获区域（视频区域中心的一小块）
+     * @auth : tyf
+     * @date : 2026-03-20
+     */
+    private Rectangle getMouseCaptureRect() {
+        Rectangle vr = getVideoAreaRect();
+        if (vr == null) {
+            return null;
+        }
+        int capW = Math.max(120, (int) (vr.width * MOUSE_CAPTURE_RATIO));
+        int capH = Math.max(120, (int) (vr.height * MOUSE_CAPTURE_RATIO));
+        capW = Math.min(capW, vr.width);
+        capH = Math.min(capH, vr.height);
+
+        int capX = vr.x + (vr.width - capW) / 2;
+        int capY = vr.y + (vr.height - capH) / 2;
+        return new Rectangle(capX, capY, capW, capH);
+    }
+
+    private void handleGameModeMouseMotion(MouseEvent e) {
+        if (!gameCursorHidden) {
+            setCursor(createTransparentCursor());
+            gameCursorHidden = true;
+            try {
+                gameRobot = new java.awt.Robot();
+            } catch (Exception ex) {
+                gameRobot = null;
+            }
+        }
+
+        if (!isPointInVideoArea(e.getPoint())) {
+            warpToCaptureSafeArea();
+            gameLastMousePos = null;
+            return;
+        }
+
+        if (gameLastMousePos != null) {
+            int deltaX = e.getX() - gameLastMousePos.x;
+            int deltaY = e.getY() - gameLastMousePos.y;
+            GameMappingService.handleMouseMoved(deltaX, deltaY);
+            checkAndWarpMouseInCaptureRect(e.getPoint());
+        }
+        gameLastMousePos = e.getPoint();
+    }
+
+    private void checkAndWarpMouseInCaptureRect(Point localPos) {
+        if (gameRobot == null) {
+            return;
+        }
+        int margin = 30;
+        boolean needsWarp = false;
+        int newLocalX = localPos.x;
+        int newLocalY = localPos.y;
+        Rectangle vr = getMouseCaptureRect();
+        if (vr == null) {
+            return;
+        }
+
+        if (localPos.x <= vr.x + margin) {
+            newLocalX = vr.x + vr.width - margin;
+            needsWarp = true;
+        } else if (localPos.x >= vr.x + vr.width - margin) {
+            newLocalX = vr.x + margin;
+            needsWarp = true;
+        }
+
+        if (localPos.y <= vr.y + margin) {
+            newLocalY = vr.y + vr.height - margin;
+            needsWarp = true;
+        } else if (localPos.y >= vr.y + vr.height - margin) {
+            newLocalY = vr.y + margin;
+            needsWarp = true;
+        }
+
+        if (needsWarp) {
+            Point p = new Point(newLocalX, newLocalY);
+            SwingUtilities.convertPointToScreen(p, this);
+            gameRobot.mouseMove(p.x, p.y);
+            gameLastMousePos = null;
+            GameMappingService.ignoreNextMouseMoves(3);
+        }
+    }
+
+    private void warpToCaptureSafeArea() {
+        if (gameRobot == null) {
+            return;
+        }
+        Rectangle vr = getMouseCaptureRect();
+        if (vr == null) {
+            return;
+        }
+        int margin = 30;
+        int x = vr.x + Math.max(margin, vr.width / 2);
+        int y = vr.y + Math.max(margin, vr.height / 2);
+        x = Math.min(vr.x + vr.width - margin, x);
+        y = Math.min(vr.y + vr.height - margin, y);
+        Point p = new Point(x, y);
+        SwingUtilities.convertPointToScreen(p, this);
+        gameRobot.mouseMove(p.x, p.y);
+        gameLastMousePos = null;
+        GameMappingService.ignoreNextMouseMoves(4);
     }
 
     private void handleKeyPressed(KeyEvent e) {
