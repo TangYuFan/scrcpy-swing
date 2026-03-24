@@ -6,6 +6,7 @@ import com.tyf.demo.entity.Device;
 import com.tyf.demo.entity.DeviceTableModel;
 import com.tyf.demo.service.ConnectService;
 import com.tyf.demo.service.ConstService;
+import com.tyf.demo.service.GameMappingConfig;
 import com.tyf.demo.service.ScrcpyService;
 import com.tyf.demo.util.DeviceTools;
 import com.tyf.demo.util.GuiTools;
@@ -13,6 +14,7 @@ import com.tyf.demo.util.WifiTools;
 import org.pmw.tinylog.Logger;
 
 import javax.swing.*;
+import javax.swing.table.*;
 import java.awt.*;
 import java.awt.event.*;
 import java.io.File;
@@ -52,6 +54,7 @@ public class TopPanel extends JPanel {
         JLabel swi = GuiTools.createLinkLabel("Switch", ConstService.FONT_NORMAL, ConstService.THEME_PRIMARY);
         JLabel wifi = GuiTools.createLinkLabel("Wifi", ConstService.FONT_NORMAL, ConstService.THEME_PRIMARY);
         JLabel readme = GuiTools.createLinkLabel("Info", ConstService.FONT_NORMAL, ConstService.THEME_PRIMARY);
+        JLabel mapping = GuiTools.createLinkLabel("Map", ConstService.FONT_NORMAL, ConstService.THEME_PRIMARY);
         JLabel log = GuiTools.createLinkLabel("Log", ConstService.FONT_NORMAL, ConstService.THEME_PRIMARY);
         JLabel mlog = GuiTools.createLinkLabel("MLog", ConstService.FONT_NORMAL, ConstService.THEME_PRIMARY);
 
@@ -67,6 +70,16 @@ public class TopPanel extends JPanel {
                 }
             }
         });
+
+
+        // 游戏键位映射配置
+        mapping.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                showMappingDialog();
+            }
+        });
+
 
         // 打开说明文档
         readme.addMouseListener(new MouseAdapter() {
@@ -540,6 +553,7 @@ public class TopPanel extends JPanel {
         leftPanel.add(swi);
         leftPanel.add(wifi);
         leftPanel.add(readme);
+        leftPanel.add(mapping);
         rightPanel.add(mlog);
         rightPanel.add(log);
 
@@ -547,5 +561,307 @@ public class TopPanel extends JPanel {
         // 加入主面板
         add(leftPanel, BorderLayout.WEST);
         add(rightPanel, BorderLayout.EAST);
+    }
+
+    private void showMappingDialog() {
+        JDialog dialog = new JDialog(MainFrame.getMainFrame(), "键位映射");
+        dialog.setSize(800, 450);
+        dialog.setLayout(new BorderLayout());
+
+        JPanel topPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        topPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+        JLabel modeLabel = new JLabel("模式:");
+        JRadioButton normalModeBtn = new JRadioButton("正常");
+        JRadioButton mappingModeBtn = new JRadioButton("游戏映射");
+        ButtonGroup modeGroup = new ButtonGroup();
+        modeGroup.add(normalModeBtn);
+        modeGroup.add(mappingModeBtn);
+
+        if (GameMappingConfig.isMappingMode()) {
+            mappingModeBtn.setSelected(true);
+        } else {
+            normalModeBtn.setSelected(true);
+        }
+
+        normalModeBtn.addActionListener(e -> GameMappingConfig.setMappingMode(false));
+        mappingModeBtn.addActionListener(e -> GameMappingConfig.setMappingMode(true));
+
+        JButton addBtn = new JButton("+ 新增");
+
+        topPanel.add(modeLabel);
+        topPanel.add(normalModeBtn);
+        topPanel.add(mappingModeBtn);
+        topPanel.add(Box.createHorizontalStrut(20));
+        topPanel.add(addBtn);
+
+        String[] columnNames = {"名称", "类型", "配置", "触发", "启用", "操作"};
+        java.util.List<GameMappingConfig.MappingEntry> mappingList = GameMappingConfig.getMappings();
+        Object[][] data = new Object[mappingList.size()][6];
+
+        for (int i = 0; i < mappingList.size(); i++) {
+            GameMappingConfig.MappingEntry entry = mappingList.get(i);
+            data[i][0] = entry.getName().isEmpty() ? "(未命名)" : entry.getName();
+            data[i][1] = entry.getType().getDesc();
+            data[i][2] = entry.getDisplayDesc();
+            data[i][3] = entry.getTriggerDesc();
+            data[i][4] = entry.isEnabled();
+            data[i][5] = "操作";
+        }
+
+        JTable table = new JTable(data, columnNames) {
+            @Override
+            public Class<?> getColumnClass(int column) {
+                if (column == 4) return Boolean.class;
+                return String.class;
+            }
+
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                return column == 4 || column == 5;
+            }
+        };
+
+        table.getColumnModel().getColumn(0).setPreferredWidth(80);
+        table.getColumnModel().getColumn(1).setPreferredWidth(60);
+        table.getColumnModel().getColumn(2).setPreferredWidth(120);
+        table.getColumnModel().getColumn(3).setPreferredWidth(60);
+        table.getColumnModel().getColumn(4).setPreferredWidth(40);
+        table.getColumnModel().getColumn(5).setPreferredWidth(60);
+
+        table.getColumnModel().getColumn(4).setCellRenderer(new DefaultTableCellRenderer() {
+            @Override
+            public Component getTableCellRendererComponent(JTable table, Object value,
+                    boolean isSelected, boolean hasFocus, int row, int column) {
+                JCheckBox checkBox = new JCheckBox();
+                checkBox.setSelected((Boolean) value);
+                checkBox.setHorizontalAlignment(SwingConstants.CENTER);
+                return checkBox;
+            }
+        });
+
+        table.getColumnModel().getColumn(4).setCellEditor(new DefaultCellEditor(new JCheckBox()));
+
+        table.getColumnModel().getColumn(5).setCellRenderer(new DefaultTableCellRenderer() {
+            @Override
+            public Component getTableCellRendererComponent(JTable table, Object value,
+                    boolean isSelected, boolean hasFocus, int row, int column) {
+                JButton button = new JButton("操作");
+                button.setHorizontalAlignment(SwingConstants.CENTER);
+                return button;
+            }
+        });
+
+        final JPopupMenu popupMenu = new JPopupMenu();
+        JMenuItem editItem = new JMenuItem("编辑");
+        JMenuItem deleteItem = new JMenuItem("删除");
+        popupMenu.add(editItem);
+        popupMenu.add(deleteItem);
+
+        table.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                int row = table.rowAtPoint(e.getPoint());
+                int col = table.columnAtPoint(e.getPoint());
+                if (col == 4) {
+                    table.setValueAt(!((Boolean) table.getValueAt(row, col)), row, col);
+                    GameMappingConfig.MappingEntry entry = mappingList.get(row);
+                    entry.setEnabled((Boolean) table.getValueAt(row, col));
+                } else if (col == 5) {
+                    if (e.getButton() == MouseEvent.BUTTON1) {
+                        popupMenu.show(table, e.getX(), e.getY());
+                    }
+                }
+            }
+        });
+
+        editItem.addActionListener(e -> {
+            int row = table.getSelectedRow();
+            if (row >= 0) {
+                showEditMappingDialog(row, mappingList.get(row));
+            }
+        });
+
+        deleteItem.addActionListener(e -> {
+            int row = table.getSelectedRow();
+            if (row >= 0) {
+                int confirm = JOptionPane.showConfirmDialog(dialog, "确定删除此映射？", "确认删除", JOptionPane.YES_NO_OPTION);
+                if (confirm == JOptionPane.YES_OPTION) {
+                    GameMappingConfig.MappingEntry entry = mappingList.get(row);
+                    GameMappingConfig.removeMapping(entry.getId());
+                    GameMappingConfig.saveMappings();
+                    GameMappingConfig.loadMappings();
+                    dialog.dispose();
+                    showMappingDialog();
+                }
+            }
+        });
+
+        addBtn.addActionListener(e -> {
+            GameMappingConfig.MappingEntry newEntry = new GameMappingConfig.MappingEntry();
+            GameMappingConfig.addMapping(newEntry);
+            GameMappingConfig.saveMappings();
+            GameMappingConfig.loadMappings();
+            dialog.dispose();
+            showMappingDialog();
+        });
+
+        JScrollPane scrollPane = new JScrollPane(table);
+        dialog.add(topPanel, BorderLayout.NORTH);
+        dialog.add(scrollPane, BorderLayout.CENTER);
+
+        JPanel bottomPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        JButton closeBtn = new JButton("关闭");
+        closeBtn.addActionListener(e -> dialog.dispose());
+        bottomPanel.add(closeBtn);
+        dialog.add(bottomPanel, BorderLayout.SOUTH);
+
+        dialog.setLocationRelativeTo(MainFrame.getMainFrame());
+        dialog.setVisible(true);
+        dialog.toFront();
+    }
+
+    private void showEditMappingDialog(int rowIndex, GameMappingConfig.MappingEntry entry) {
+        JDialog editDialog = new JDialog(MainFrame.getMainFrame(), "编辑映射");
+        editDialog.setModal(true);
+
+        JPanel formPanel = new JPanel();
+        formPanel.setLayout(new BoxLayout(formPanel, BoxLayout.Y_AXIS));
+        formPanel.setBorder(BorderFactory.createEmptyBorder(8, 12, 8, 12));
+
+        JTextField nameField = new JTextField(entry.getName(), 15);
+
+        JComboBox<GameMappingConfig.MappingType> typeCombo = new JComboBox<>(GameMappingConfig.MappingType.values());
+        typeCombo.setRenderer(new DefaultListCellRenderer() {
+            @Override
+            public java.awt.Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
+                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+                if (value instanceof GameMappingConfig.MappingType) {
+                    setText(((GameMappingConfig.MappingType) value).getDesc());
+                }
+                return this;
+            }
+        });
+        typeCombo.setSelectedItem(entry.getType());
+
+        JComboBox<GameMappingConfig.TriggerType> triggerCombo = new JComboBox<>(GameMappingConfig.TriggerType.values());
+        triggerCombo.setRenderer(new DefaultListCellRenderer() {
+            @Override
+            public java.awt.Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
+                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+                if (value instanceof GameMappingConfig.TriggerType) {
+                    setText(((GameMappingConfig.TriggerType) value).getDesc());
+                }
+                return this;
+            }
+        });
+        triggerCombo.setSelectedItem(entry.getTriggerType());
+
+        JTextField keyField = new JTextField(entry.getKeyName() != null ? entry.getKeyName() : "", 10);
+        JTextField xField = new JTextField(String.valueOf(entry.getPhoneX()), 6);
+        JTextField yField = new JTextField(String.valueOf(entry.getPhoneY()), 6);
+        JTextField sensitivityField = new JTextField(String.valueOf(entry.getMouseSensitivity()), 5);
+
+        Runnable updateForm = () -> {
+            formPanel.removeAll();
+
+            GameMappingConfig.MappingType type = (GameMappingConfig.MappingType) typeCombo.getSelectedItem();
+
+            JLabel typeHint = new JLabel("<html><span style='color:#333;font-size:12px;font-weight:bold;'>" + type.getDesc() + "</span> <span style='color:gray;font-size:11px;'>" + type.getHelp() + "</span></html>");
+            typeHint.setBorder(BorderFactory.createEmptyBorder(2, 5, 8, 5));
+            formPanel.add(typeHint);
+
+            formPanel.add(createRow("名称:", nameField));
+
+            JPanel typeRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
+            typeRow.add(new JLabel("类型:"));
+            typeRow.add(typeCombo);
+            formPanel.add(typeRow);
+
+            if (type == GameMappingConfig.MappingType.MOUSE_MOVE) {
+                formPanel.add(createRow("灵敏度:", sensitivityField));
+            } else if (type == GameMappingConfig.MappingType.DRAG) {
+            } else if (type == GameMappingConfig.MappingType.SWIPE) {
+            } else {
+                JPanel triggerRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
+                triggerRow.add(new JLabel("触发:"));
+                triggerRow.add(triggerCombo);
+                formPanel.add(triggerRow);
+                formPanel.add(createRow("键位:", keyField));
+
+                if (type == GameMappingConfig.MappingType.CLICK) {
+                    JPanel xyRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
+                    xyRow.add(new JLabel("坐标:"));
+                    xyRow.add(new JLabel("X"));
+                    xyRow.add(xField);
+                    xyRow.add(new JLabel("Y"));
+                    xyRow.add(yField);
+                    formPanel.add(xyRow);
+                }
+            }
+
+            formPanel.revalidate();
+            formPanel.repaint();
+            editDialog.pack();
+            
+            int maxWidth = 400;
+            int maxHeight = 450;
+            if (editDialog.getWidth() > maxWidth) {
+                editDialog.setSize(maxWidth, editDialog.getHeight());
+            }
+            if (editDialog.getHeight() > maxHeight) {
+                editDialog.setSize(editDialog.getWidth(), maxHeight);
+            }
+            
+            editDialog.setLocationRelativeTo(MainFrame.getMainFrame());
+        };
+
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 5));
+        JButton saveBtn = new JButton("保存");
+        JButton cancelBtn = new JButton("取消");
+        buttonPanel.add(saveBtn);
+        buttonPanel.add(cancelBtn);
+
+        editDialog.add(formPanel, BorderLayout.CENTER);
+        editDialog.add(buttonPanel, BorderLayout.SOUTH);
+
+        typeCombo.addActionListener(e -> updateForm.run());
+        updateForm.run();
+
+        saveBtn.addActionListener(e -> {
+            try {
+                entry.setName(nameField.getText());
+                entry.setType((GameMappingConfig.MappingType) typeCombo.getSelectedItem());
+                entry.setTriggerType((GameMappingConfig.TriggerType) triggerCombo.getSelectedItem());
+                entry.setKeyName(keyField.getText());
+                entry.setPhoneX(Float.parseFloat(xField.getText()));
+                entry.setPhoneY(Float.parseFloat(yField.getText()));
+                entry.setMouseSensitivity(Integer.parseInt(sensitivityField.getText()));
+            } catch (NumberFormatException ex) {
+                JOptionPane.showMessageDialog(editDialog, "请输入有效的数字");
+                return;
+            }
+            GameMappingConfig.saveMappings();
+            GameMappingConfig.loadMappings();
+            editDialog.dispose();
+        });
+
+        cancelBtn.addActionListener(e -> editDialog.dispose());
+
+        editDialog.setVisible(true);
+        editDialog.toFront();
+    }
+
+    private JPanel createRow(String label, JComponent field) {
+        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
+        row.add(new JLabel(label));
+        row.add(field);
+        return row;
+    }
+
+    private JLabel createHint(String text) {
+        JLabel hint = new JLabel("<html><span style='color:gray;font-size:11px;'>" + text + "</span></html>");
+        hint.setBorder(BorderFactory.createEmptyBorder(2, 5, 2, 5));
+        return hint;
     }
 }

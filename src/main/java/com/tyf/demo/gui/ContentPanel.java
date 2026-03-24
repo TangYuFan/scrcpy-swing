@@ -4,6 +4,8 @@ import com.tyf.demo.service.AndroidKeyCode;
 import com.tyf.demo.service.ConstService;
 import com.tyf.demo.service.ControlMessage;
 import com.tyf.demo.service.ControlService;
+import com.tyf.demo.service.GameMappingConfig;
+import com.tyf.demo.service.GameMappingService;
 import org.pmw.tinylog.Logger;
 
 import javax.swing.*;
@@ -59,6 +61,11 @@ public class ContentPanel extends JPanel {
         addMouseListener(new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
+                if (GameMappingConfig.isMappingMode()) {
+                    GameMappingService.handleMousePressed(e.getButton());
+                    return;
+                }
+
                 if (frame == null) return;
                 Point p = convertToDevicePoint(e.getPoint());
                 // Logger.debug("control: mousePressed button=" + e.getButton() + " point=" + p);
@@ -95,11 +102,35 @@ public class ContentPanel extends JPanel {
         addMouseMotionListener(new MouseMotionAdapter() {
             @Override
             public void mouseDragged(MouseEvent e) {
+                if (GameMappingConfig.isMappingMode()) {
+                    return;
+                }
+
                 if (frame == null) return;
                 Point p = convertToDevicePoint(e.getPoint());
                 // 拖拽时移动触摸
                 // Logger.debug("control: mouseDragged point=" + p);
                 ControlService.sendTouchMove((int) p.getX(), (int) p.getY());
+            }
+        });
+
+        // 添加鼠标移动监听器 (用于游戏模式视角转换)
+        addMouseMotionListener(new MouseMotionAdapter() {
+            private Point lastMousePos;
+
+            @Override
+            public void mouseMoved(MouseEvent e) {
+                if (!GameMappingConfig.isMappingMode()) {
+                    lastMousePos = null;
+                    return;
+                }
+
+                if (lastMousePos != null) {
+                    int deltaX = e.getX() - lastMousePos.x;
+                    int deltaY = e.getY() - lastMousePos.y;
+                    GameMappingService.handleMouseMoved(deltaX, deltaY);
+                }
+                lastMousePos = e.getPoint();
             }
         });
 
@@ -124,12 +155,22 @@ public class ContentPanel extends JPanel {
         addKeyListener(new KeyAdapter() {
             @Override
             public void keyPressed(KeyEvent e) {
+                if (GameMappingConfig.isMappingMode()) {
+                    GameMappingService.handleKeyPressed(e.getKeyCode());
+                    return;
+                }
+
                 if (frame == null) return;
                 handleKeyPressed(e);
             }
 
             @Override
             public void keyReleased(KeyEvent e) {
+                if (GameMappingConfig.isMappingMode()) {
+                    GameMappingService.handleKeyReleased(e.getKeyCode());
+                    return;
+                }
+
                 if (frame == null) return;
                 handleKeyReleased(e);
             }
@@ -403,6 +444,9 @@ public class ContentPanel extends JPanel {
             this.frame = bi;
             this.currentWidth = w;
             this.currentHeight = h;
+
+            // 同步更新游戏映射服务的视频尺寸
+            GameMappingService.updateVideoSize(w, h);
 
             if (resolutionChanged) {
                 Logger.info("scrcpy: resolution changed " + currentWidth + "x" + currentHeight + " -> " + w + "x" + h);

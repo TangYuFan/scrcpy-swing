@@ -30,6 +30,10 @@ public final class ControlService {
 
     private ControlService() {}
 
+    public static boolean isConnected() {
+        return controlChannel.get() != null;
+    }
+
     /**
      *   @desc : 启动控制服务（创建新连接）
      *   @auth : tyf

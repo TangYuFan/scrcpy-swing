@@ -20,6 +20,7 @@ public final class ConstService {
     public static final String WORKSPACE = "C:\\"+ ROOT;                       // 工作目录
     public static final String LOG_DIR = "C:\\"+ ROOT +"\\log\\";              // 日志路径
     public static final String ADB_PATH = "C:\\"+ ROOT +"\\adb\\";             // adb 文件路径
+    public static final String MAPPING_DIR = "C:\\"+ ROOT +"\\mapping\\";      // 映射配置路径
 
     // ================================================================
     // Scrcpy 投屏配置
