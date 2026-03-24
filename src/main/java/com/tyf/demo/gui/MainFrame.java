@@ -21,24 +21,21 @@ public class MainFrame extends JFrame {
     public MainFrame() {
 
         setTitle(ConstService.MAIN_TITLE);
-        // 设置最大窗口尺寸（0 = 不限制）
         if (ConstService.MAX_WINDOW_WIDTH > 0 || ConstService.MAX_WINDOW_HEIGHT > 0) {
             setMaximumSize(new Dimension(
                 ConstService.MAX_WINDOW_WIDTH > 0 ? ConstService.MAX_WINDOW_WIDTH : Integer.MAX_VALUE,
                 ConstService.MAX_WINDOW_HEIGHT > 0 ? ConstService.MAX_WINDOW_HEIGHT : Integer.MAX_VALUE
             ));
         }
-        setLocationRelativeTo(null);     // 居中
+        setLocationRelativeTo(null);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setIconImage(((ImageIcon) ConstService.MAIN_ICON).getImage());  // 图标
+        setIconImage(((ImageIcon) ConstService.MAIN_ICON).getImage());
 
-        // 窗体入口
         this.add(new MainPanel());
         this.pack();
         this.setLocationRelativeTo(null);
         mainFrame = this;
 
-        // 退出前结束 adb shell / 端口转发，避免 adb.exe 仍被占用导致下次启动无法覆盖
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent e) {
@@ -48,13 +45,12 @@ public class MainFrame extends JFrame {
         });
     }
 
-    /**
-     *   @desc : 获取主窗体实例
-     *   @auth : tyf
-     *   @date : 2026-03-20 14:04:14
-    */
     public static MainFrame getMainFrame() {
         return mainFrame;
+    }
+
+    public ContentPanel getContentPanel() {
+        return MainPanel.getContentPanel();
     }
 
     /**

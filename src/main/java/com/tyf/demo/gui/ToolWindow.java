@@ -2,10 +2,12 @@ package com.tyf.demo.gui;
 
 import com.tyf.demo.service.ConstService;
 import com.tyf.demo.service.ControlService;
+import com.tyf.demo.service.GameMappingConfig;
 
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
+import java.util.List;
 
 /**
  *   @desc : 独立浮动工具窗口（跟随主窗口，显示手机控制按钮）
@@ -72,6 +74,27 @@ public class ToolWindow extends JDialog {
         }), gbc);
         gbc.gridy++;
         mainPanel.add(createToolButton("\u2709", "Notify", e -> ControlService.sendExpandNotification()), gbc);
+
+        gbc.gridy++;
+        JToggleButton mappingModeBtn = new JToggleButton();
+        mappingModeBtn.setFocusable(false);
+        mappingModeBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        mappingModeBtn.setToolTipText("点击切换游戏映射模式");
+        mappingModeBtn.setPreferredSize(new Dimension(50, 28));
+        mappingModeBtn.setMaximumSize(new Dimension(50, 28));
+        mappingModeBtn.setMinimumSize(new Dimension(50, 28));
+        mappingModeBtn.setBorder(BorderFactory.createLineBorder(ConstService.THEME_BORDER, 1));
+        mappingModeBtn.setOpaque(false);
+        mappingModeBtn.setContentAreaFilled(false);
+
+        updateMappingButton(mappingModeBtn);
+
+        mappingModeBtn.addActionListener(e -> {
+            GameMappingConfig.setMappingMode(mappingModeBtn.isSelected());
+            updateMappingButton(mappingModeBtn);
+        });
+
+        mainPanel.add(mappingModeBtn, gbc);
 
         setContentPane(mainPanel);
         
@@ -197,6 +220,42 @@ public class ToolWindow extends JDialog {
         if (instance != null) {
             instance.dispose();
             instance = null;
+        }
+    }
+
+    private static void updateMappingButton(JToggleButton btn) {
+        boolean isGameMode = btn.isSelected();
+        btn.setFont(new Font(ConstService.FONT_NORMAL.getFontName(), Font.BOLD, 11));
+        if (isGameMode) {
+            btn.setText("游戏");
+            btn.setForeground(Color.WHITE);
+            btn.setBackground(new Color(80, 140, 255));
+        } else {
+            btn.setText("普通");
+            btn.setForeground(Color.WHITE);
+            btn.setBackground(new Color(80, 200, 80));
+        }
+        btn.setOpaque(true);
+        btn.setContentAreaFilled(true);
+    }
+
+    public static void updateMappingButtonIfExists(boolean isGameMode) {
+        if (instance == null) return;
+        Component[] comps = instance.getContentPane().getComponents();
+        for (Component c : comps) {
+            if (c instanceof JPanel) {
+                JPanel panel = (JPanel) c;
+                for (Component child : panel.getComponents()) {
+                    if (child instanceof JToggleButton) {
+                        JToggleButton btn = (JToggleButton) child;
+                        if ("游戏".equals(btn.getText()) || "普通".equals(btn.getText())) {
+                            btn.setSelected(isGameMode);
+                            updateMappingButton(btn);
+                            return;
+                        }
+                    }
+                }
+            }
         }
     }
 }

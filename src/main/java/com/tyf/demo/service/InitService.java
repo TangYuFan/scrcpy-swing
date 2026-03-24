@@ -146,8 +146,10 @@ public class InitService {
             initAdb();
             // scrcpy-server初始化到本地
             initScrcpyServer();
-            // 游戏映射配置初始化
+            // 游戏映射配置初始化（内置 FPS 映射 + 合并本地配置）
             GameMappingConfig.loadMappings();
+            GameMappingConfig.ensureBuiltinMappings();
+            GameMappingConfig.saveMappings();
         });
 
         // 进度 TODO

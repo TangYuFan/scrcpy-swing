@@ -8,11 +8,6 @@ import javax.swing.*;
 import java.awt.*;
 
 
-/**
- *   @desc : 主要应用窗口
- *   @auth : tyf
- *   @date : 2026-03-20 14:04:14
- */
 public class MainPanel extends JPanel {
 
     private static MainPanel panel;
@@ -40,11 +35,6 @@ public class MainPanel extends JPanel {
         registerDisconnectListener();
     }
 
-    /**
-     *   @desc : 注册设备断开监听器
-     *   @auth : tyf
-     *   @date : 2026-03-21
-     */
     private void registerDisconnectListener() {
         ScrcpyService.setOnDisconnectListener(reason -> {
             Logger.info("Device auto disconnected: " + reason);
@@ -61,20 +51,10 @@ public class MainPanel extends JPanel {
         });
     }
 
-    /**
-     *   @desc : 获取主面板实例
-     *   @auth : tyf
-     *   @date : 2026-03-20 14:04:14
-    */
     public static MainPanel getMainPanel(){
         return panel;
     }
 
-    /**
-     *   @desc : 获取内容面板实例
-     *   @auth : tyf
-     *   @date : 2026-03-20 14:04:14
-    */
     public static ContentPanel getContentPanel(){
         return contentPanel;
     }
