@@ -127,11 +127,11 @@ final class ScrcpyH264Decoder implements AutoCloseable {
                 }
             }
 
-            if (idx <= 3) {
-                Logger.info("scrcpy decode: AU#" + idx + " inBytes=" + annexB.length
-                        + " useAnnexB=" + containsAnnexBStartCode(data)
-                        + " inHead=[" + headHex(annexB) + "]");
-            }
+            // if (idx <= 3) {
+            //     Logger.info("scrcpy decode: AU#" + idx + " inBytes=" + annexB.length
+            //             + " useAnnexB=" + containsAnnexBStartCode(data)
+            //             + " inHead=[" + headHex(annexB) + "]");
+            // }
 
             // 采样：仅对较小前几包在外层调用处已做日志，这里避免刷屏
             // 这里的日志主要用于定位 native 崩溃点（最后一条日志就是崩溃前的位置）
@@ -152,17 +152,17 @@ final class ScrcpyH264Decoder implements AutoCloseable {
             packet.pts(AV_NOPTS_VALUE);
             packet.dts(AV_NOPTS_VALUE);
 
-            if (idx <= 3) {
-                Logger.info("scrcpy decode: AU#" + idx + " send_packet dataLen=" + data.length);
-            }
+            // if (idx <= 3) {
+            //     Logger.info("scrcpy decode: AU#" + idx + " send_packet dataLen=" + data.length);
+            // }
             int send = avcodec_send_packet(codecCtx, packet);
             if (send < 0) {
                 Logger.error("scrcpy avcodec_send_packet: " + send);
                 return;
             }
-            if (idx <= 3) {
-                Logger.info("scrcpy decode: AU#" + idx + " send_packet ok ret=" + send);
-            }
+            // if (idx <= 3) {
+            //     Logger.info("scrcpy decode: AU#" + idx + " send_packet ok ret=" + send);
+            // }
 
             while (true) {
                 av_frame_unref(decodingFrame);
@@ -174,10 +174,10 @@ final class ScrcpyH264Decoder implements AutoCloseable {
                     Logger.error("scrcpy avcodec_receive_frame: " + rec);
                     break;
                 }
-                if (idx <= 3) {
-                    Logger.info("scrcpy decode: AU#" + idx + " receive_frame ok fmt=" + decodingFrame.format()
-                            + " w=" + decodingFrame.width() + " h=" + decodingFrame.height());
-                }
+                // if (idx <= 3) {
+                //     Logger.info("scrcpy decode: AU#" + idx + " receive_frame ok fmt=" + decodingFrame.format()
+                //             + " w=" + decodingFrame.width() + " h=" + decodingFrame.height());
+                // }
 
                 int fw = decodingFrame.width();
                 int fh = decodingFrame.height();
@@ -195,7 +195,7 @@ final class ScrcpyH264Decoder implements AutoCloseable {
                 if (swsChanged) {
                     sws_freeContext(sws);
                     sws = null;
-                    Logger.info("scrcpy: video size changed, rebuilding SWS: " + lastSwsW + "x" + lastSwsH + " -> " + fw + "x" + fh);
+                    // Logger.info("scrcpy: video size changed, rebuilding SWS: " + lastSwsW + "x" + lastSwsH + " -> " + fw + "x" + fh);
                 }
                 lastSwsW = fw;
                 lastSwsH = fh;
@@ -222,12 +222,12 @@ final class ScrcpyH264Decoder implements AutoCloseable {
                     rgbLinesizes = new IntPointer(4);
                     rgbPointers = new PointerPointer<>(4);
                     av_image_fill_arrays(rgbPointers, rgbLinesizes, rgbBuf, AV_PIX_FMT_BGR24, fw, fh, 1);
-                    Logger.info("scrcpy: rebuilt RGB buffer for " + fw + "x" + fh);
+                    // Logger.info("scrcpy: rebuilt RGB buffer for " + fw + "x" + fh);
                 }
 
-                if (idx <= 3) {
-                    Logger.info("scrcpy decode: AU#" + idx + " before sws_scale");
-                }
+                // if (idx <= 3) {
+                //     Logger.info("scrcpy decode: AU#" + idx + " before sws_scale");
+                // }
                 int scaled = sws_scale(
                         sws,
                         decodingFrame.data(), decodingFrame.linesize(),
@@ -237,9 +237,9 @@ final class ScrcpyH264Decoder implements AutoCloseable {
                     Logger.error("scrcpy sws_scale: " + scaled);
                     continue;
                 }
-                if (idx <= 3) {
-                    Logger.info("scrcpy decode: AU#" + idx + " after sws_scale ret=" + scaled);
-                }
+                // if (idx <= 3) {
+                //     Logger.info("scrcpy decode: AU#" + idx + " after sws_scale ret=" + scaled);
+                // }
 
                 byte[] packed = copyBgrToPacked(rgbBuf, rgbLinesizes.get(0), fw, fh);
                 if (packed != null) {

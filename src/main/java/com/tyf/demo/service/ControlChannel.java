@@ -1,11 +1,10 @@
 package com.tyf.demo.service;
 
-import org.pmw.tinylog.Logger;
-
+import java.io.BufferedOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 
 /**
  *   @desc : Scrcpy 控制通道，负责Socket消息序列化
@@ -15,13 +14,17 @@ import java.nio.ByteBuffer;
 final class ControlChannel {
 
     private final DataOutputStream out;
+    private static final int OUT_BUFFER_SIZE = 8192;
+    private static final long TOUCH_FLUSH_INTERVAL_NS = 2_000_000L; // 2ms
+    private static final int TOUCH_FLUSH_MAX_PENDING = 6;
+    private int pendingTouchWrites = 0;
+    private long lastFlushNs = System.nanoTime();
 
     ControlChannel(OutputStream out) {
-        this.out = new DataOutputStream(out);
+        this.out = new DataOutputStream(new BufferedOutputStream(out, OUT_BUFFER_SIZE));
     }
 
-    public void send(ControlMessage msg) throws IOException {
-        String typeName = getTypeName(msg.getType());
+    public synchronized void send(ControlMessage msg) throws IOException {
         switch (msg.getType()) {
             case ControlMessage.TYPE_INJECT_KEYCODE:
                 writeInjectKeycode(msg);
@@ -42,7 +45,6 @@ final class ControlChannel {
                 writeEmpty(msg.getType());
                 break;
         }
-        // Logger.debug("control: sent type=" + typeName + " flushed");
     }
 
     private static String getTypeName(int type) {
@@ -86,7 +88,7 @@ final class ControlChannel {
         writeInt(msg.getKeycode());
         writeInt(msg.getRepeat());
         writeInt(msg.getMetaState());
-        out.flush();
+        flushNow();
     }
 
     // TYPE_INJECT_TEXT: type(1) + textLength(4) + text(n) = 5 + n bytes
@@ -98,11 +100,11 @@ final class ControlChannel {
         if (text.length() > ControlMessage.INJECT_TEXT_MAX_LENGTH) {
             text = text.substring(0, ControlMessage.INJECT_TEXT_MAX_LENGTH);
         }
-        byte[] textBytes = text.getBytes("UTF-8");
+        byte[] textBytes = text.getBytes(StandardCharsets.UTF_8);
         writeByte(ControlMessage.TYPE_INJECT_TEXT);
         writeInt(textBytes.length);
         out.write(textBytes);
-        out.flush();
+        flushNow();
     }
 
     // TYPE_INJECT_TOUCH_EVENT: 
@@ -146,7 +148,7 @@ final class ControlChannel {
         
         // 写入并刷新
         out.write(data);
-        out.flush();
+        flushForTouchLike();
         
         // 打印十六进制（调试用）
         // StringBuilder hex = new StringBuilder();
@@ -167,19 +169,33 @@ final class ControlChannel {
         writeShort(msg.getHScrollInt());   // i16 fixed point
         writeShort(msg.getVScrollInt());   // i16 fixed point
         writeInt(msg.getButtons());
-        out.flush();
+        flushForTouchLike();
     }
 
     // TYPE_BACK_OR_SCREEN_ON: type(1) + action(1) = 2 bytes
     private void writeBackOrScreenOn(ControlMessage msg) throws IOException {
         writeByte(ControlMessage.TYPE_BACK_OR_SCREEN_ON);
         writeByte(msg.getAction());
-        out.flush();
+        flushNow();
     }
 
     // 空消息: type(1) = 1 byte
     private void writeEmpty(int type) throws IOException {
         out.write(type);
+        flushNow();
+    }
+
+    private void flushForTouchLike() throws IOException {
+        pendingTouchWrites++;
+        long nowNs = System.nanoTime();
+        if (pendingTouchWrites >= TOUCH_FLUSH_MAX_PENDING || (nowNs - lastFlushNs) >= TOUCH_FLUSH_INTERVAL_NS) {
+            flushNow();
+        }
+    }
+
+    private void flushNow() throws IOException {
         out.flush();
+        pendingTouchWrites = 0;
+        lastFlushNs = System.nanoTime();
     }
 }

@@ -17,6 +17,8 @@ public final class BuiltinMappingRegistry {
             new FireMapping(),
             new AimMapping(),
             new JumpMapping(),
+            new RunMapping(),
+            new WalkSlowMapping(),
             new CrouchMapping(),
             new ProneMapping(),
             new ReloadMapping(),

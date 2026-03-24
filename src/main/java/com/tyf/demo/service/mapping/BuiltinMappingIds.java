@@ -16,6 +16,8 @@ public final class BuiltinMappingIds {
     public static final String FIRE_LONG = "fps_fire_long";
     public static final String AIM = "fps_aim";
     public static final String JUMP = "fps_jump";
+    public static final String RUN = "fps_run";
+    public static final String WALK_SLOW = "fps_walk_slow";
     public static final String CROUCH = "fps_crouch";
     public static final String PRONE = "fps_prone";
     public static final String RELOAD = "fps_reload";

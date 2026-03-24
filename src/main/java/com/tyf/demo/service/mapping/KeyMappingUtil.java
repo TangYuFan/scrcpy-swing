@@ -17,6 +17,8 @@ public final class KeyMappingUtil {
             return 0;
         }
         String t = s.trim().toUpperCase(Locale.ROOT);
+        // 统一去除常见分隔符，兼容 "LEFT SHIFT" / "caps-lock" / "caps_lock"
+        String n = t.replace(" ", "").replace("-", "").replace("_", "");
         switch (t) {
             case "SPACE":
             case "空格":
@@ -36,6 +38,36 @@ public final class KeyMappingUtil {
                 return KeyEvent.VK_CONTROL;
             case "ALT":
                 return KeyEvent.VK_ALT;
+            case "CAPS":
+            case "CAPSLOCK":
+            case "CAPS_LOCK":
+                return KeyEvent.VK_CAPS_LOCK;
+            default:
+                break;
+        }
+        switch (n) {
+            case "LEFTSHIFT":
+            case "RIGHTSHIFT":
+            case "LSHIFT":
+            case "RSHIFT":
+            case "SHIFT":
+                return KeyEvent.VK_SHIFT;
+            case "LEFTCTRL":
+            case "RIGHTCTRL":
+            case "LCTRL":
+            case "RCTRL":
+            case "CONTROL":
+            case "CTRL":
+                return KeyEvent.VK_CONTROL;
+            case "LEFTALT":
+            case "RIGHTALT":
+            case "LALT":
+            case "RALT":
+            case "ALT":
+                return KeyEvent.VK_ALT;
+            case "CAPSLOCK":
+            case "CAPS":
+                return KeyEvent.VK_CAPS_LOCK;
             default:
                 break;
         }
@@ -50,9 +82,9 @@ public final class KeyMappingUtil {
         }
         if (t.startsWith("F") && t.length() <= 3) {
             try {
-                int n = Integer.parseInt(t.substring(1));
-                if (n >= 1 && n <= 12) {
-                    return KeyEvent.VK_F1 + (n - 1);
+                int fn = Integer.parseInt(t.substring(1));
+                if (fn >= 1 && fn <= 12) {
+                    return KeyEvent.VK_F1 + (fn - 1);
                 }
             } catch (NumberFormatException ignored) {
                 // fall through
@@ -61,7 +93,14 @@ public final class KeyMappingUtil {
         try {
             return Integer.parseInt(t);
         } catch (NumberFormatException e) {
-            return 0;
+            // 兜底：支持直接输入 VK_XXX / XXX（例如 VK_SHIFT）
+            String symbol = n.startsWith("VK") ? n.substring(2) : n;
+            try {
+                java.lang.reflect.Field f = KeyEvent.class.getField("VK_" + symbol);
+                return f.getInt(null);
+            } catch (Exception ignored) {
+                return 0;
+            }
         }
     }
 
@@ -72,8 +111,26 @@ public final class KeyMappingUtil {
         if (keyCode == KeyEvent.VK_SPACE) {
             return "SPACE";
         }
+        if (keyCode == KeyEvent.VK_ENTER) {
+            return "ENTER";
+        }
         if (keyCode == KeyEvent.VK_TAB) {
             return "TAB";
+        }
+        if (keyCode == KeyEvent.VK_ESCAPE) {
+            return "ESC";
+        }
+        if (keyCode == KeyEvent.VK_SHIFT) {
+            return "SHIFT";
+        }
+        if (keyCode == KeyEvent.VK_CONTROL) {
+            return "CTRL";
+        }
+        if (keyCode == KeyEvent.VK_ALT) {
+            return "ALT";
+        }
+        if (keyCode == KeyEvent.VK_CAPS_LOCK) {
+            return "CAPSLOCK";
         }
         if (keyCode >= KeyEvent.VK_F1 && keyCode <= KeyEvent.VK_F12) {
             return "F" + (1 + (keyCode - KeyEvent.VK_F1));

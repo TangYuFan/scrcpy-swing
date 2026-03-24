@@ -15,7 +15,6 @@ import java.awt.event.InputMethodEvent;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferByte;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -31,6 +30,8 @@ public class ContentPanel extends JPanel {
     private volatile int currentWidth;
     private volatile int currentHeight;
     private volatile boolean sizeInitialized = false;
+    private BufferedImage renderImage;
+    private byte[] renderImageBytes;
 
     private final List<ClickEffect> clickEffects = new ArrayList<>();
     private ScheduledExecutorService effectExecutor;
@@ -538,6 +539,13 @@ public class ContentPanel extends JPanel {
         loadingDialog = dialog;
     }
 
+    private void ensureRenderImageBuffer(int w, int h) {
+        if (renderImage == null || renderImage.getWidth() != w || renderImage.getHeight() != h) {
+            renderImage = new BufferedImage(w, h, BufferedImage.TYPE_3BYTE_BGR);
+            renderImageBytes = ((DataBufferByte) renderImage.getRaster().getDataBuffer()).getData();
+        }
+    }
+
     public void postFramePackedBgr(byte[] packedBgr, int w, int h) {
         if (packedBgr == null || w <= 0 || h <= 0) {
             return;
@@ -549,15 +557,13 @@ public class ContentPanel extends JPanel {
         }
 
         final boolean shouldCloseLoading = (frame == null);
-        final byte[] copy = Arrays.copyOf(packedBgr, need);
         final boolean resolutionChanged = (currentWidth != w || currentHeight != h);
 
         SwingUtilities.invokeLater(() -> {
-            BufferedImage bi = new BufferedImage(w, h, BufferedImage.TYPE_3BYTE_BGR);
-            byte[] dst = ((DataBufferByte) bi.getRaster().getDataBuffer()).getData();
-            System.arraycopy(copy, 0, dst, 0, need);
+            ensureRenderImageBuffer(w, h);
+            System.arraycopy(packedBgr, 0, renderImageBytes, 0, need);
 
-            this.frame = bi;
+            this.frame = renderImage;
             this.currentWidth = w;
             this.currentHeight = h;
 

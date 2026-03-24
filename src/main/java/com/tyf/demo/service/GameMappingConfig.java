@@ -380,6 +380,21 @@ public class GameMappingConfig {
         return null;
     }
 
+    public static MappingEntry findBuiltinMapping(String builtinId) {
+        if (builtinId == null || builtinId.isEmpty()) {
+            return null;
+        }
+        for (MappingEntry entry : mappings) {
+            if (!entry.isEnabled()) {
+                continue;
+            }
+            if (builtinId.equals(entry.getBuiltinId())) {
+                return entry;
+            }
+        }
+        return null;
+    }
+
     public static MappingEntry findMappingByKeyCode(int keyCode) {
         for (MappingEntry entry : mappings) {
             if (!entry.isEnabled()) {

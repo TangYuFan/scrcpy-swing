@@ -484,9 +484,9 @@ public final class ScrcpyService {
                     int expect = w * h * 3;  // BGR 格式，每像素 3 字节
 
                     // 抽样日志：前 3 帧 + 每隔 300 帧（约每 5 秒）
-                    if (n <= 3 || n % 300 == 0) {
-                        Logger.debug("scrcpy: frame#" + n + " " + w + "x" + h + " bytes=" + len);
-                    }
+                    // if (n <= 3 || n % 300 == 0) {
+                    //     Logger.debug("scrcpy: frame#" + n + " " + w + "x" + h + " bytes=" + len);
+                    // }
                     if (ConstService.SCRCPY_DRAW_DECODED_TO_UI && MainPanel.getContentPanel() != null) {
                         MainPanel.getContentPanel().postFramePackedBgr(packed, w, h);
                     }
@@ -500,9 +500,9 @@ public final class ScrcpyService {
                             byte[] au = r.nextMediaPacket();
                             accessUnits++;
                             boolean sample = (accessUnits <= 3 || accessUnits % 300 == 0);
-                            if (sample) {
-                                Logger.debug("scrcpy: au#" + accessUnits + " bytes=" + (au == null ? 0 : au.length));
-                            }
+                            // if (sample) {
+                            //     Logger.debug("scrcpy: au#" + accessUnits + " bytes=" + (au == null ? 0 : au.length));
+                            // }
 
                             // 计时：记录解码耗时
                             long t0 = sample ? System.nanoTime() : 0;
@@ -510,10 +510,10 @@ public final class ScrcpyService {
                             // 解码 H.264 数据包
                             dec.decode(au, sink);
 
-                            if (sample) {
-                                long dtMs = (System.nanoTime() - t0) / 1_000_000L;
-                                Logger.debug("scrcpy: au#" + accessUnits + " time=" + dtMs + "ms");
-                            }
+                            // if (sample) {
+                            //     long dtMs = (System.nanoTime() - t0) / 1_000_000L;
+                            //     Logger.debug("scrcpy: au#" + accessUnits + " time=" + dtMs + "ms");
+                            // }
                         } catch (IOException e) {
                             Logger.debug("scrcpy: stream closed/EOF");
                             break;
