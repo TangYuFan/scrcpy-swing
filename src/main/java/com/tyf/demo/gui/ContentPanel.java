@@ -568,6 +568,7 @@ public class ContentPanel extends JPanel {
             this.currentHeight = h;
 
             GameMappingService.updateVideoSize(w, h);
+            ControlService.updateVideoSize(w, h);
 
             if (resolutionChanged) {
                 Logger.info("scrcpy: resolution changed " + currentWidth + "x" + currentHeight + " -> " + w + "x" + h);
