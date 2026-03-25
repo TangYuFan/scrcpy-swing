@@ -4,6 +4,8 @@ import com.tyf.demo.gui.MainFrame;
 import com.tyf.demo.service.mapping.AbstractBuiltinMapping;
 import com.tyf.demo.service.mapping.BuiltinMappingRegistry;
 import org.pmw.tinylog.Logger;
+import com.tyf.demo.gui.MainPanel;
+import com.tyf.demo.gui.ToolWindow;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -314,25 +316,44 @@ public class GameMappingConfig {
         Logger.info("game mapping: mode changed to " + (mode ? "游戏映射" : "正常"));
         
         mappingMode = mode;
+
+        // 同步 UI 按钮状态（避免输入源切换后 UI 仍显示“游戏模式”）
+        java.awt.EventQueue.invokeLater(() -> ToolWindow.updateMappingButtonIfExists(mode));
+
+        // 输入法策略：进入游戏模式时禁用输入法通道并尽量切英文，避免 Shift/WASD 触发输入法候选
+        try {
+            MainFrame.applyImePolicyForMappingMode(mode);
+        } catch (Throwable ignored) {
+        }
         
         if (!mode) {
             GameMappingService.resetState();
+            try {
+                GlfwInputCaptureService.stop();
+            } catch (Throwable ignored) {
+            }
         } else {
             java.awt.EventQueue.invokeLater(() -> {
                 if (MainFrame.getMainFrame() != null && MainFrame.getMainFrame().getContentPanel() != null) {
                     MainFrame.getMainFrame().getContentPanel().requestFocusInWindow();
                 }
+                try {
+                    if (MainPanel.getContentPanel() != null) {
+                        MainPanel.getContentPanel().enableRawInputIfPossible();
+                    }
+                } catch (Throwable ignored) {
+                }
             });
+            try {
+                // 用 GLFW 接管游戏模式输入（鼠标锁定/隐藏/delta）
+                GlfwInputCaptureService.start();
+            } catch (Throwable ignored) {
+            }
         }
     }
 
     public static void toggleMappingMode() {
-        mappingMode = !mappingMode;
-        Logger.info("game mapping: mode toggled to " + (mappingMode ? "游戏映射" : "正常"));
-        
-        if (!mappingMode) {
-            GameMappingService.resetState();
-        }
+        setMappingMode(!mappingMode);
     }
 
     public static List<MappingEntry> getMappings() {

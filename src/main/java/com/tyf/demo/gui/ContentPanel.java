@@ -30,8 +30,6 @@ public class ContentPanel extends JPanel {
     private byte[] renderImageBytes;
 
     // 旧 Swing 点击波纹特效已移除（LWJGL Canvas 输出视频时无法被轻量级覆盖）
-    // 游戏模式视角转换的鼠标状态（mouseMoved + mouseDragged 共用）
-    private Point gameLastMousePos;
     private boolean gameCursorHidden = false;
     private java.awt.Robot gameRobot;
     private volatile boolean gameMouseListening = true;
@@ -75,6 +73,23 @@ public class ContentPanel extends JPanel {
         return new Dimension(Math.max(1, getWidth()), Math.max(1, getHeight()));
     }
 
+    /**
+     * GLFW 捕获窗口：覆盖在视频画布上获取输入。
+     */
+    public Rectangle getVideoSurfaceBoundsOnScreen() {
+        try {
+            Component c = lwjglVideo != null ? lwjglVideo : this;
+            Point p = c.getLocationOnScreen();
+            return new Rectangle(p.x, p.y, c.getWidth(), c.getHeight());
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    public void enableRawInputIfPossible() {
+        // 已切换为 GLFW 输入捕获；Raw Input 方案保留但默认不启用
+    }
+
     public ContentPanel() {
         setLayout(new BorderLayout());
         setBackground(ConstService.THEME_CONTENT_BG);
@@ -104,9 +119,8 @@ public class ContentPanel extends JPanel {
         addFocusListener(new FocusAdapter() {
             @Override
             public void focusLost(FocusEvent e) {
-                if (GameMappingConfig.isMappingMode()) {
-                    SwingUtilities.invokeLater(() -> requestFocusInWindow());
-                }
+                // 游戏模式下输入已由 GLFW 捕获窗口接管，这里不要再“抢回”Swing焦点，
+                // 否则会与 GLFW 争抢前台/焦点，可能触发窗口抖动/尺寸跳变。
             }
         });
 
@@ -178,7 +192,7 @@ public class ContentPanel extends JPanel {
             @Override
             public void mouseEntered(MouseEvent e) {
                 if (GameMappingConfig.isMappingMode()) {
-                    gameLastMousePos = null;
+                    // AWT 仅负责捕获/回绕，视角相对位移由 Raw Input 提供
                 }
             }
 
@@ -252,8 +266,7 @@ public class ContentPanel extends JPanel {
                         long now = System.currentTimeMillis();
                         if (now - lastMapMoveLogMs >= MAP_DEBUG_MOVE_LOG_INTERVAL_MS) {
                             lastMapMoveLogMs = now;
-                            Logger.info("[MAPDBG] mouseDragged local=" + e.getX() + "," + e.getY()
-                                    + " last=" + (gameLastMousePos != null ? (gameLastMousePos.x + "," + gameLastMousePos.y) : "null"));
+                            Logger.info("[MAPDBG] mouseDragged local=" + e.getX() + "," + e.getY());
                         }
                     }
                     handleGameModeMouseMotion(e);
@@ -277,7 +290,6 @@ public class ContentPanel extends JPanel {
                         if (now - lastMapMoveLogMs >= MAP_DEBUG_MOVE_LOG_INTERVAL_MS) {
                             lastMapMoveLogMs = now;
                             Logger.info("[MAPDBG] mouseMoved local=" + e.getX() + "," + e.getY()
-                                    + " last=" + (gameLastMousePos != null ? (gameLastMousePos.x + "," + gameLastMousePos.y) : "null")
                                     + " inVideo=" + isPointInVideoArea(e.getPoint()));
                         }
                     }
@@ -289,7 +301,7 @@ public class ContentPanel extends JPanel {
                     ContentPanel.this.setCursor(Cursor.getPredefinedCursor(Cursor.DEFAULT_CURSOR));
                     gameCursorHidden = false;
                 }
-                gameLastMousePos = null;
+                // 旧版 AWT delta 逻辑已移除
             }
         });
 
@@ -434,13 +446,8 @@ public class ContentPanel extends JPanel {
             return;
         }
 
-        if (gameLastMousePos != null) {
-            int deltaX = e.getX() - gameLastMousePos.x;
-            int deltaY = e.getY() - gameLastMousePos.y;
-            GameMappingService.handleMouseMoved(deltaX, deltaY);
-            checkAndWarpMouseInCaptureRect(p);
-        }
-        gameLastMousePos = p;
+        // 视角移动由 Windows Raw Input（JNA）提供相对位移；AWT 仅负责回绕保持鼠标在捕获区
+        checkAndWarpMouseInCaptureRect(p);
     }
 
     /**
@@ -496,7 +503,6 @@ public class ContentPanel extends JPanel {
             Point screen = new Point(newLocalX, newLocalY);
             SwingUtilities.convertPointToScreen(screen, lwjglVideo != null ? lwjglVideo : this);
             gameRobot.mouseMove(screen.x, screen.y);
-            gameLastMousePos = new Point(newLocalX, newLocalY);
             gameMouseListening = true;
             GameMappingService.ignoreNextMouseMoves(5);
         }
@@ -520,7 +526,6 @@ public class ContentPanel extends JPanel {
         SwingUtilities.convertPointToScreen(screen, lwjglVideo != null ? lwjglVideo : this);
         gameMouseListening = false;
         gameRobot.mouseMove(screen.x, screen.y);
-        gameLastMousePos = new Point(x, y);
         gameMouseListening = true;
         GameMappingService.ignoreNextMouseMoves(5);
     }
@@ -718,8 +723,8 @@ public class ContentPanel extends JPanel {
                 if (ConstService.AUTO_RESIZE_WINDOW) {
                     MainFrame.resizeForContent(w, h);
                 } else {
-                    setPreferredSize(new Dimension(ConstService.MAIN_WIDTH, ConstService.MAIN_HEIGHT));
-                    revalidate();
+                    // 关闭自动调整窗口大小时，不再在收到帧时改 preferredSize/revalidate，
+                    // 否则用户手动调整过窗口后，可能在进入游戏模式等时机出现“尺寸跳变”。
                 }
             }
 
@@ -743,7 +748,10 @@ public class ContentPanel extends JPanel {
                 loadingDialog = null;
             }
 
-            requestFocusInWindow();
+            // 游戏模式下由 GLFW 捕获窗口负责焦点与输入，不要每帧抢焦点
+            if (!GameMappingConfig.isMappingMode()) {
+                requestFocusInWindow();
+            }
         });
     }
 

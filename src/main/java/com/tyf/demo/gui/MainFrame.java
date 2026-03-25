@@ -9,6 +9,8 @@ import java.awt.*;
 import java.awt.event.KeyEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.awt.im.InputContext;
+import java.util.Locale;
 
 
 /**
@@ -59,14 +61,10 @@ public class MainFrame extends JFrame {
      */
     private void registerGlobalMappingHotkey() {
         KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventDispatcher(e -> {
-            // 游戏模式下全局吞掉字符输入事件，避免输入法候选弹出
-            if (GameMappingConfig.isMappingMode() && e.getID() == KeyEvent.KEY_TYPED) {
-                return true;
-            }
-            if (e.getID() != KeyEvent.KEY_PRESSED) {
-                return false;
-            }
-            if (e.getKeyCode() == KeyEvent.VK_L && (e.getModifiersEx() & KeyEvent.CTRL_DOWN_MASK) != 0) {
+            // Ctrl+L：应用级快捷键，强制切换游戏映射模式（无论当前是否游戏模式都生效）
+            if (e.getID() == KeyEvent.KEY_PRESSED
+                    && e.getKeyCode() == KeyEvent.VK_L
+                    && (e.getModifiersEx() & KeyEvent.CTRL_DOWN_MASK) != 0) {
                 GameMappingConfig.toggleMappingMode();
                 boolean isGame = GameMappingConfig.isMappingMode();
                 ToolWindow.updateMappingButtonIfExists(isGame);
@@ -75,12 +73,63 @@ public class MainFrame extends JFrame {
                 }
                 return true;
             }
+
+            // 游戏模式下：键盘输入由 GLFW 捕获窗口处理。
+            // Swing/AWT 这边直接吞掉所有键盘事件，避免输入法候选/组合键等干扰（WASD 触发拼音等）。
+            if (GameMappingConfig.isMappingMode()) {
+                return e.getID() == KeyEvent.KEY_PRESSED
+                        || e.getID() == KeyEvent.KEY_RELEASED
+                        || e.getID() == KeyEvent.KEY_TYPED;
+            }
+
+            if (e.getID() != KeyEvent.KEY_PRESSED) {
+                return false;
+            }
             return false;
         });
     }
 
     public ContentPanel getContentPanel() {
         return MainPanel.getContentPanel();
+    }
+
+    /**
+     * @desc : 游戏模式下强制切换到英文输入法并禁用输入法通道，避免 WASD/Shift 等触发输入法候选
+     * @auth : tyf
+     * @date : 2026-03-25
+     */
+    public static void applyImePolicyForMappingMode(boolean mappingMode) {
+        if (mainFrame == null) {
+            return;
+        }
+        SwingUtilities.invokeLater(() -> {
+            try {
+                // 1) 禁用 AWT/Swing 的输入法通道（对大多数输入法候选弹窗有明显抑制作用）
+                mainFrame.enableInputMethods(!mappingMode);
+                if (mainFrame.getContentPanel() != null) {
+                    mainFrame.getContentPanel().enableInputMethods(!mappingMode);
+                }
+
+                // 2) 尝试把本进程输入法切换到英文（部分输入法 Shift 切换会影响后续组合态）
+                if (mappingMode) {
+                    InputContext ic = InputContext.getInstance();
+                    if (ic != null) {
+                        ic.selectInputMethod(Locale.ENGLISH);
+                    }
+                    InputContext ic2 = mainFrame.getInputContext();
+                    if (ic2 != null) {
+                        ic2.selectInputMethod(Locale.ENGLISH);
+                    }
+                    if (mainFrame.getContentPanel() != null) {
+                        InputContext ic3 = mainFrame.getContentPanel().getInputContext();
+                        if (ic3 != null) {
+                            ic3.selectInputMethod(Locale.ENGLISH);
+                        }
+                    }
+                }
+            } catch (Throwable ignored) {
+            }
+        });
     }
 
     /**
@@ -110,6 +159,10 @@ public class MainFrame extends JFrame {
      *   @param h 视频高度
      */
     public static void resizeForContent(int w, int h) {
+        // 保险：当关闭自动适配时，任何地方误调用也不允许改窗口尺寸
+        if (!ConstService.AUTO_RESIZE_WINDOW) {
+            return;
+        }
         if (mainFrame == null || w <= 0 || h <= 0) {
             return;
         }
@@ -134,10 +187,10 @@ public class MainFrame extends JFrame {
 
             if (currentSize.width == newWindowW && currentSize.height == newWindowH) return;
 
-            Point center = mainFrame.getLocation();
             mainFrame.setSize(newWindowW, newWindowH);
-            mainFrame.setLocation(center.x + (currentSize.width - newWindowW) / 2, 
-                                   center.y + (currentSize.height - newWindowH) / 2);
+            // 只调整大小，不自动移动窗口位置：
+            // - 避免在首次连接/切换模式时出现“窗口跳到屏幕中间”的体验
+            // - 也避免多次 resize 时位置逐渐漂移
         });
     }
 }
