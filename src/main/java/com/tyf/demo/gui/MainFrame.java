@@ -21,6 +21,8 @@ import java.util.Locale;
 public class MainFrame extends JFrame {
 
     private static MainFrame mainFrame;
+    private static Point savedWindowLocation;
+    private static Dimension savedWindowSize;
 
     public MainFrame() {
 
@@ -148,6 +150,26 @@ public class MainFrame extends JFrame {
             } else {
                 mainFrame.setTitle(ConstService.MAIN_TITLE + " - " + deviceName);
             }
+        });
+    }
+
+    public static void saveWindowPositionBeforeModeSwitch() {
+        if (mainFrame == null) {
+            return;
+        }
+        SwingUtilities.invokeLater(() -> {
+            savedWindowLocation = mainFrame.getLocation();
+            savedWindowSize = mainFrame.getSize();
+        });
+    }
+
+    public static void restoreWindowPositionAfterModeSwitch() {
+        if (mainFrame == null || savedWindowLocation == null || savedWindowSize == null) {
+            return;
+        }
+        SwingUtilities.invokeLater(() -> {
+            mainFrame.setLocation(savedWindowLocation);
+            mainFrame.setSize(savedWindowSize);
         });
     }
 

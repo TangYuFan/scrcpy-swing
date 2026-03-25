@@ -17,6 +17,8 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
+
+import javax.swing.SwingUtilities;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -317,7 +319,11 @@ public class GameMappingConfig {
         
         mappingMode = mode;
 
-        // 同步 UI 按钮状态（避免输入源切换后 UI 仍显示“游戏模式”）
+        if (mode) {
+            MainFrame.saveWindowPositionBeforeModeSwitch();
+        }
+
+        // 同步 UI 按钮状态（避免输入源切换后 UI 仍显示"游戏模式"）
         java.awt.EventQueue.invokeLater(() -> ToolWindow.updateMappingButtonIfExists(mode));
 
         // 输入法策略：进入游戏模式时禁用输入法通道并尽量切英文，避免 Shift/WASD 触发输入法候选
@@ -349,6 +355,8 @@ public class GameMappingConfig {
                 GlfwInputCaptureService.start();
             } catch (Throwable ignored) {
             }
+
+            SwingUtilities.invokeLater(() -> MainFrame.restoreWindowPositionAfterModeSwitch());
         }
     }
 
