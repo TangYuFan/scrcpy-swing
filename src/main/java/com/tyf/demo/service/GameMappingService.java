@@ -3,6 +3,7 @@ package com.tyf.demo.service;
 import com.tyf.demo.service.GameMappingConfig.MappingEntry;
 import com.tyf.demo.service.GameMappingConfig.MappingType;
 import com.tyf.demo.service.GameMappingConfig.TriggerType;
+import com.tyf.demo.gui.MainPanel;
 import com.tyf.demo.service.mapping.BuiltinMappingIds;
 import org.pmw.tinylog.Logger;
 
@@ -86,6 +87,11 @@ public class GameMappingService {
     private static ScheduledExecutorService mouseViewScheduler;
     private static ScheduledFuture<?> mouseViewTimeoutFuture;
 
+    // -------- 映射排查日志（节流，避免刷屏）--------
+    private static final boolean MAP_DEBUG = false;
+    private static final long MAP_DEBUG_MOVE_LOG_INTERVAL_MS = 80L;
+    private static volatile long lastMapMoveLogMs;
+
     public enum RealtimeProfile {
         STABLE,
         BALANCED,
@@ -143,6 +149,9 @@ public class GameMappingService {
         if (!ControlService.isConnected()) {
             return;
         }
+        if (MAP_DEBUG) {
+            Logger.info("[MAPDBG] handleKeyPressed keyCode=" + keyCode);
+        }
 
         int wasdIdx = wasdIndex(keyCode);
         if (wasdIdx >= 0) {
@@ -186,7 +195,17 @@ public class GameMappingService {
 
         MappingEntry entry = GameMappingConfig.findMappingByKeyCode(keyCode);
         if (entry == null || !entry.isEnabled()) {
+            if (MAP_DEBUG) {
+                Logger.info("[MAPDBG] keyCode=" + keyCode + " 未找到映射或已禁用 entry=" + (entry != null ? entry.getName() : "null"));
+            }
             return;
+        }
+        if (MAP_DEBUG) {
+            Logger.info("[MAPDBG] keyCode=" + keyCode + " 命中映射 name=" + entry.getName()
+                    + " type=" + entry.getType()
+                    + " trigger=" + entry.getTriggerType()
+                    + " pressMode=" + entry.getKeyboardPressMode()
+                    + " phone=" + entry.getPhoneX() + "," + entry.getPhoneY());
         }
 
         if (entry.getTriggerType() == TriggerType.KEYBOARD
@@ -194,11 +213,18 @@ public class GameMappingService {
                 && entry.getKeyboardPressMode() == GameMappingConfig.KeyboardPressMode.HOLD) {
             // 参考 QtScrcpy：按下即 down，松开即 up；若此前 release 丢失，自动纠正状态
             if (keyboardHoldActive.containsKey(keyCode)) {
+                if (MAP_DEBUG) {
+                    Logger.info("[MAPDBG] keyHold 已在按下中，忽略重复 keyPressed keyCode=" + keyCode);
+                }
                 return;
             }
             long pointerId = pointerIdForKeyboardHold(entry);
             int x = clampToScreenX(entry.getPhoneX());
             int y = clampToScreenY(entry.getPhoneY());
+            if (MAP_DEBUG) {
+                Logger.info("[MAPDBG] keyHold DOWN pointerId=" + pointerId + " x=" + x + " y=" + y + " name=" + entry.getName());
+            }
+            debugRippleAt(x, y);
             ControlService.sendTouchDown(pointerId, x, y, ControlMessage.AMOTION_EVENT_BUTTON_PRIMARY);
             keyboardHoldActive.put(keyCode, entry);
             nonRepeatKeysDown.add(keyCode);
@@ -207,6 +233,9 @@ public class GameMappingService {
         }
 
         if (nonRepeatKeysDown.contains(keyCode)) {
+            if (MAP_DEBUG) {
+                Logger.info("[MAPDBG] nonRepeatKeysDown 已包含 keyCode=" + keyCode + "，忽略重复触发");
+            }
             return;
         }
         nonRepeatKeysDown.add(keyCode);
@@ -220,6 +249,9 @@ public class GameMappingService {
         }
         if (!ControlService.isConnected()) {
             return;
+        }
+        if (MAP_DEBUG) {
+            Logger.info("[MAPDBG] handleKeyReleased keyCode=" + keyCode);
         }
 
         int wasdIdx = wasdIndex(keyCode);
@@ -250,6 +282,10 @@ public class GameMappingService {
             long pointerId = pointerIdForKeyboardHold(hold);
             int x = clampToScreenX(hold.getPhoneX());
             int y = clampToScreenY(hold.getPhoneY());
+            if (MAP_DEBUG) {
+                Logger.info("[MAPDBG] keyHold UP pointerId=" + pointerId + " x=" + x + " y=" + y + " name=" + hold.getName());
+            }
+            debugRippleAt(x, y);
             ControlService.sendTouchUp(pointerId, x, y);
             // Logger.info("game mapping: triggered - " + hold.getName() + " (键盘长按结束)");
         }
@@ -542,6 +578,13 @@ public class GameMappingService {
 
         long now = System.currentTimeMillis();
         if (now < ignoreMouseMoveUntilMs) {
+            if (MAP_DEBUG) {
+                long t = System.currentTimeMillis();
+                if (t - lastMapMoveLogMs >= MAP_DEBUG_MOVE_LOG_INTERVAL_MS) {
+                    lastMapMoveLogMs = t;
+                    Logger.info("[MAPDBG] viewMove ignored: now<ignoreUntil (" + now + "<" + ignoreMouseMoveUntilMs + ") dx=" + deltaX + " dy=" + deltaY);
+                }
+            }
             return;
         }
 
@@ -575,6 +618,9 @@ public class GameMappingService {
             float ny = mouseViewNormY + dny;
 
             if (nx < VIEW_NORM_MIN || nx > VIEW_NORM_MAX || ny < VIEW_NORM_MIN || ny > VIEW_NORM_MAX) {
+                if (MAP_DEBUG) {
+                    Logger.info("[MAPDBG] viewMove hit bound: nx=" + nx + " ny=" + ny + " -> stopTouch");
+                }
                 mouseViewStopTouchInternal();
                 ignoreNextMouseMoves(4);
                 return;
@@ -585,6 +631,16 @@ public class GameMappingService {
 
             int px = clampInt((int) Math.round(mouseViewNormX * (sw - 1)), 0, sw - 1);
             int py = clampInt((int) Math.round(mouseViewNormY * (sh - 1)), 0, sh - 1);
+            if (MAP_DEBUG) {
+                long t = System.currentTimeMillis();
+                if (t - lastMapMoveLogMs >= MAP_DEBUG_MOVE_LOG_INTERVAL_MS) {
+                    lastMapMoveLogMs = t;
+                    Logger.info("[MAPDBG] viewMove dx=" + deltaX + " dy=" + deltaY
+                            + " sw=" + sw + " sh=" + sh
+                            + " norm=" + String.format("%.4f", mouseViewNormX) + "," + String.format("%.4f", mouseViewNormY)
+                            + " px=" + px + " py=" + py);
+                }
+            }
             ControlService.sendTouchMove(PTR_MOUSE_VIEW, px, py);
         }
     }
@@ -687,6 +743,9 @@ public class GameMappingService {
         if (!ControlService.isConnected()) {
             return;
         }
+        if (MAP_DEBUG) {
+            Logger.info("[MAPDBG] handleMousePressed button=" + button);
+        }
 
         if (button == MouseEvent.BUTTON3) {
             MappingEntry aim = GameMappingConfig.findMappingByMouseRight();
@@ -717,6 +776,9 @@ public class GameMappingService {
         if (!ControlService.isConnected()) {
             return;
         }
+        if (MAP_DEBUG) {
+            Logger.info("[MAPDBG] handleMouseReleased button=" + button);
+        }
 
         if (button == MouseEvent.BUTTON3) {
             MappingEntry aim = GameMappingConfig.findMappingByMouseRight();
@@ -745,6 +807,7 @@ public class GameMappingService {
     private static void executeClickDown(long pointerId, float ratioX, float ratioY) {
         int x = clampToScreenX(ratioX);
         int y = clampToScreenY(ratioY);
+        debugRippleAt(x, y);
         ControlService.sendTouchDown(pointerId, x, y, ControlMessage.AMOTION_EVENT_BUTTON_PRIMARY);
         // Logger.debug("game mapping: touch down at (" + ratioX + ", " + ratioY + ")");
     }
@@ -754,7 +817,12 @@ public class GameMappingService {
             return;
         }
 
-        // Logger.info("game mapping: triggered - " + entry.getName());
+        if (MAP_DEBUG) {
+            Logger.info("[MAPDBG] executeMapping name=" + entry.getName()
+                    + " type=" + entry.getType()
+                    + " trigger=" + entry.getTriggerType()
+                    + " phone=" + entry.getPhoneX() + "," + entry.getPhoneY());
+        }
 
         switch (entry.getType()) {
             case CLICK:
@@ -779,6 +847,10 @@ public class GameMappingService {
         int y = clampToScreenY(ratioY);
 
         long pointerId = pointerIdForClick(entry);
+        if (MAP_DEBUG) {
+            Logger.info("[MAPDBG] executeClick pointerId=" + pointerId + " x=" + x + " y=" + y + " name=" + entry.getName());
+        }
+        debugRippleAt(x, y);
         ControlService.sendTouchDown(pointerId, x, y, ControlMessage.AMOTION_EVENT_BUTTON_PRIMARY);
         ensureActionScheduler();
         int finalX = x;
@@ -786,6 +858,23 @@ public class GameMappingService {
         actionScheduler.schedule(() -> ControlService.sendTouchUp(pointerId, finalX, finalY), CLICK_UP_DELAY_MS, TimeUnit.MILLISECONDS);
 
         // Logger.debug("game mapping: click at (" + ratioX + ", " + ratioY + ")");
+    }
+
+    private static void debugRippleAt(int x, int y) {
+        if (!GameMappingConfig.isMappingMode()) {
+            return;
+        }
+        if (!GameMappingConfig.isDebugShowMappingRipple()) {
+            return;
+        }
+        try {
+            com.tyf.demo.gui.ContentPanel cp = MainPanel.getContentPanel();
+            if (cp != null) {
+                javax.swing.SwingUtilities.invokeLater(() -> cp.showMappingRippleAtDevicePoint(x, y));
+            }
+        } catch (Throwable ignored) {
+            // 调试能力，不影响控制链路
+        }
     }
 
     private static long pointerIdForClick(MappingEntry entry) {

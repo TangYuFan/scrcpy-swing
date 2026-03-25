@@ -1,5 +1,6 @@
 package com.tyf.demo.gui;
 
+import com.tyf.demo.gui.gl.LwjglVideoCanvas;
 import com.tyf.demo.service.AndroidKeyCode;
 import com.tyf.demo.service.ConstService;
 import com.tyf.demo.service.ControlMessage;
@@ -14,11 +15,6 @@ import java.awt.event.*;
 import java.awt.event.InputMethodEvent;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferByte;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 
 public class ContentPanel extends JPanel {
 
@@ -33,13 +29,51 @@ public class ContentPanel extends JPanel {
     private BufferedImage renderImage;
     private byte[] renderImageBytes;
 
-    private final List<ClickEffect> clickEffects = new ArrayList<>();
-    private ScheduledExecutorService effectExecutor;
+    // 旧 Swing 点击波纹特效已移除（LWJGL Canvas 输出视频时无法被轻量级覆盖）
     // 游戏模式视角转换的鼠标状态（mouseMoved + mouseDragged 共用）
     private Point gameLastMousePos;
     private boolean gameCursorHidden = false;
     private java.awt.Robot gameRobot;
     private volatile boolean gameMouseListening = true;
+
+    /** Windows 下非 null 时使用 LWJGL 绘制视频；失败或未启用时为 null，回退 CPU 绘制 */
+    private LwjglVideoCanvas lwjglVideo;
+
+    /**
+     * 映射调试：按设备坐标在渲染画布上显示涟漪。
+     * 仅在 LWJGL 渲染路径下生效。
+     */
+    public void showMappingRippleAtDevicePoint(int deviceX, int deviceY) {
+        if (lwjglVideo == null || frame == null) {
+            return;
+        }
+        Rectangle vr = getVideoAreaRect();
+        if (vr == null) {
+            return;
+        }
+        int iw = frame.getWidth();
+        int ih = frame.getHeight();
+        if (iw <= 0 || ih <= 0) {
+            return;
+        }
+        // 与 convertToDevicePoint 反向：device -> local
+        double scale = (double) vr.width / (double) iw;
+        int lx = (int) Math.round(vr.x + deviceX * scale);
+        int ly = (int) Math.round(vr.y + deviceY * scale);
+        lwjglVideo.addClickRipple(new Point(lx, ly));
+    }
+
+    // -------- 映射排查日志（节流，避免刷屏）--------
+    private static final boolean MAP_DEBUG = false;
+    private static final long MAP_DEBUG_MOVE_LOG_INTERVAL_MS = 80L;
+    private static volatile long lastMapMoveLogMs;
+
+    private Dimension resolveRenderSurfaceSize() {
+        if (lwjglVideo != null) {
+            return new Dimension(Math.max(1, lwjglVideo.getWidth()), Math.max(1, lwjglVideo.getHeight()));
+        }
+        return new Dimension(Math.max(1, getWidth()), Math.max(1, getHeight()));
+    }
 
     public ContentPanel() {
         setLayout(new BorderLayout());
@@ -49,30 +83,20 @@ public class ContentPanel extends JPanel {
         setFocusTraversalKeysEnabled(false);
         enableInputMethods(false);
 
-        effectExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "click-effect");
-            t.setDaemon(true);
-            return t;
-        });
-
-        effectExecutor.scheduleAtFixedRate(() -> {
-            double delta = 0.016;
-            boolean needsRepaint = false;
-
-            synchronized (clickEffects) {
-                for (ClickEffect e : clickEffects) {
-                    e.update(delta);
-                    if (!e.isFinished()) {
-                        needsRepaint = true;
-                    }
-                }
-                clickEffects.removeIf(ClickEffect::isFinished);
+        Component mouseHost = this;
+        if (isWindowsOs() && isGpuVideoEnabled()) {
+            try {
+                // 方案一：只嵌入重量级 Canvas，不做任何 Swing overlay 叠加
+                lwjglVideo = new LwjglVideoCanvas();
+                lwjglVideo.setFocusable(false);
+                add(lwjglVideo, BorderLayout.CENTER);
+                mouseHost = lwjglVideo;
+            } catch (Throwable t) {
+                Logger.warn(t, "LWJGL 视频画布不可用，使用 CPU 绘制");
+                lwjglVideo = null;
             }
-
-            if (needsRepaint) {
-                SwingUtilities.invokeLater(() -> repaint());
-            }
-        }, 0, 16, TimeUnit.MILLISECONDS);
+        } else {
+        }
 
         setFocusable(true);
         requestFocusInWindow();
@@ -86,97 +110,7 @@ public class ContentPanel extends JPanel {
             }
         });
 
-        addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseEntered(MouseEvent e) {
-                if (GameMappingConfig.isMappingMode()) {
-                    // 避免从面板外回到视频区时，用上一帧位置算出超大 delta
-                    gameLastMousePos = null;
-                }
-            }
-
-            @Override
-            public void mousePressed(MouseEvent e) {
-                if (GameMappingConfig.isMappingMode()) {
-                    requestFocusInWindow();
-                    GameMappingService.handleMousePressed(e.getButton());
-                    return;
-                }
-
-                if (frame == null) return;
-                Point p = convertToDevicePoint(e.getPoint());
-                if (p == null) return;
-                if (e.getButton() == MouseEvent.BUTTON1) {
-                    ControlService.sendTouchDown((int) p.getX(), (int) p.getY(), 
-                            ControlMessage.AMOTION_EVENT_BUTTON_PRIMARY);
-                    addClickEffect(e.getPoint());
-                } else if (e.getButton() == MouseEvent.BUTTON3) {
-                    ControlService.sendTouchDownRight((int) p.getX(), (int) p.getY());
-                }
-            }
-
-            @Override
-            public void mouseReleased(MouseEvent e) {
-                if (GameMappingConfig.isMappingMode()) {
-                    GameMappingService.handleMouseReleased(e.getButton());
-                    return;
-                }
-
-                if (frame == null) return;
-                Point p = convertToDevicePoint(e.getPoint());
-                if (p == null) return;
-                if (e.getButton() == MouseEvent.BUTTON1) {
-                    ControlService.sendTouchUp((int) p.getX(), (int) p.getY());
-                } else if (e.getButton() == MouseEvent.BUTTON3) {
-                    ControlService.sendTouchUpRight((int) p.getX(), (int) p.getY());
-                    ControlService.sendBack();
-                }
-            }
-        });
-
-        addMouseMotionListener(new MouseMotionAdapter() {
-            @Override
-            public void mouseDragged(MouseEvent e) {
-                if (GameMappingConfig.isMappingMode()) {
-                    handleGameModeMouseMotion(e);
-                    return;
-                }
-
-                if (frame == null) return;
-                Point p = convertToDevicePoint(e.getPoint());
-                ControlService.sendTouchMove((int) p.getX(), (int) p.getY());
-            }
-        });
-
-        addMouseMotionListener(new MouseMotionAdapter() {
-            @Override
-            public void mouseMoved(MouseEvent e) {
-                if (GameMappingConfig.isMappingMode()) {
-                    handleGameModeMouseMotion(e);
-                    return;
-                }
-
-                if (gameCursorHidden) {
-                    setCursor(Cursor.getPredefinedCursor(Cursor.DEFAULT_CURSOR));
-                    gameCursorHidden = false;
-                }
-                gameLastMousePos = null;
-            }
-        });
-
-        addMouseWheelListener(new MouseWheelListener() {
-            @Override
-            public void mouseWheelMoved(MouseWheelEvent e) {
-                if (GameMappingConfig.isMappingMode()) {
-                    return;
-                }
-                if (frame == null) return;
-                Point p = convertToDevicePoint(e.getPoint());
-                if (p == null) return;
-                float vScroll = -e.getWheelRotation() * 0.1f;
-                ControlService.sendScroll((int) p.getX(), (int) p.getY(), 0, vScroll);
-            }
-        });
+        attachMouseListeners(mouseHost);
 
         addKeyListener(new KeyAdapter() {
             @Override
@@ -184,6 +118,11 @@ public class ContentPanel extends JPanel {
                 if (GameMappingConfig.isMappingMode()) {
                     if (!hasFocus()) {
                         requestFocusInWindow();
+                    }
+                    if (MAP_DEBUG) {
+                        Logger.info("[MAPDBG] keyPressed keyCode=" + e.getKeyCode()
+                                + " focus=" + hasFocus()
+                                + " host=" + (lwjglVideo != null ? "LWJGL" : "CPU"));
                     }
                     if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
                         GameMappingConfig.setMappingMode(false);
@@ -203,6 +142,9 @@ public class ContentPanel extends JPanel {
             @Override
             public void keyReleased(KeyEvent e) {
                 if (GameMappingConfig.isMappingMode()) {
+                    if (MAP_DEBUG) {
+                        Logger.info("[MAPDBG] keyReleased keyCode=" + e.getKeyCode());
+                    }
                     GameMappingService.handleKeyReleased(e.getKeyCode());
                     e.consume();
                     return;
@@ -219,6 +161,151 @@ public class ContentPanel extends JPanel {
                     e.consume();
                 }
             }
+        });
+    }
+
+    private static boolean isWindowsOs() {
+        return System.getProperty("os.name", "").toLowerCase().contains("win");
+    }
+
+    private static boolean isGpuVideoEnabled() {
+        // 当前仅 Windows 目标，优先走 GPU 路径；失败会自动回退 CPU
+        return isWindowsOs();
+    }
+
+    private void attachMouseListeners(Component mouseHost) {
+        mouseHost.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseEntered(MouseEvent e) {
+                if (GameMappingConfig.isMappingMode()) {
+                    gameLastMousePos = null;
+                }
+            }
+
+            @Override
+            public void mousePressed(MouseEvent e) {
+                if (GameMappingConfig.isMappingMode()) {
+                    ContentPanel.this.requestFocusInWindow();
+                    if (MAP_DEBUG) {
+                        Logger.info("[MAPDBG] mousePressed button=" + e.getButton()
+                                + " local=" + e.getX() + "," + e.getY()
+                                + " host=" + mouseHost.getClass().getSimpleName() + " " + mouseHost.getWidth() + "x" + mouseHost.getHeight()
+                                + " frame=" + (frame != null ? (frame.getWidth() + "x" + frame.getHeight()) : "null"));
+                        Rectangle vr = getVideoAreaRect();
+                        Logger.info("[MAPDBG] videoRect=" + (vr != null ? (vr.x + "," + vr.y + " " + vr.width + "x" + vr.height) : "null"));
+                    }
+                    GameMappingService.handleMousePressed(e.getButton());
+                    return;
+                }
+
+                if (frame == null) {
+                    return;
+                }
+                Point p = convertToDevicePoint(e.getPoint());
+                if (p == null) {
+                    return;
+                }
+                if (e.getButton() == MouseEvent.BUTTON1) {
+                    ControlService.sendTouchDown((int) p.getX(), (int) p.getY(),
+                            ControlMessage.AMOTION_EVENT_BUTTON_PRIMARY);
+                    // 点击波纹：由 LWJGL Canvas 在 OpenGL 中绘制
+                    if (lwjglVideo != null) {
+                        lwjglVideo.addClickRipple(e.getPoint());
+                    }
+                } else if (e.getButton() == MouseEvent.BUTTON3) {
+                    ControlService.sendTouchDownRight((int) p.getX(), (int) p.getY());
+                }
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                if (GameMappingConfig.isMappingMode()) {
+                    if (MAP_DEBUG) {
+                        Logger.info("[MAPDBG] mouseReleased button=" + e.getButton()
+                                + " local=" + e.getX() + "," + e.getY());
+                    }
+                    GameMappingService.handleMouseReleased(e.getButton());
+                    return;
+                }
+
+                if (frame == null) {
+                    return;
+                }
+                Point p = convertToDevicePoint(e.getPoint());
+                if (p == null) {
+                    return;
+                }
+                if (e.getButton() == MouseEvent.BUTTON1) {
+                    ControlService.sendTouchUp((int) p.getX(), (int) p.getY());
+                } else if (e.getButton() == MouseEvent.BUTTON3) {
+                    ControlService.sendTouchUpRight((int) p.getX(), (int) p.getY());
+                    ControlService.sendBack();
+                }
+            }
+        });
+
+        mouseHost.addMouseMotionListener(new MouseMotionAdapter() {
+            @Override
+            public void mouseDragged(MouseEvent e) {
+                if (GameMappingConfig.isMappingMode()) {
+                    if (MAP_DEBUG) {
+                        long now = System.currentTimeMillis();
+                        if (now - lastMapMoveLogMs >= MAP_DEBUG_MOVE_LOG_INTERVAL_MS) {
+                            lastMapMoveLogMs = now;
+                            Logger.info("[MAPDBG] mouseDragged local=" + e.getX() + "," + e.getY()
+                                    + " last=" + (gameLastMousePos != null ? (gameLastMousePos.x + "," + gameLastMousePos.y) : "null"));
+                        }
+                    }
+                    handleGameModeMouseMotion(e);
+                    return;
+                }
+
+                if (frame == null) {
+                    return;
+                }
+                Point p = convertToDevicePoint(e.getPoint());
+                ControlService.sendTouchMove((int) p.getX(), (int) p.getY());
+            }
+        });
+
+        mouseHost.addMouseMotionListener(new MouseMotionAdapter() {
+            @Override
+            public void mouseMoved(MouseEvent e) {
+                if (GameMappingConfig.isMappingMode()) {
+                    if (MAP_DEBUG) {
+                        long now = System.currentTimeMillis();
+                        if (now - lastMapMoveLogMs >= MAP_DEBUG_MOVE_LOG_INTERVAL_MS) {
+                            lastMapMoveLogMs = now;
+                            Logger.info("[MAPDBG] mouseMoved local=" + e.getX() + "," + e.getY()
+                                    + " last=" + (gameLastMousePos != null ? (gameLastMousePos.x + "," + gameLastMousePos.y) : "null")
+                                    + " inVideo=" + isPointInVideoArea(e.getPoint()));
+                        }
+                    }
+                    handleGameModeMouseMotion(e);
+                    return;
+                }
+
+                if (gameCursorHidden) {
+                    ContentPanel.this.setCursor(Cursor.getPredefinedCursor(Cursor.DEFAULT_CURSOR));
+                    gameCursorHidden = false;
+                }
+                gameLastMousePos = null;
+            }
+        });
+
+        mouseHost.addMouseWheelListener(e -> {
+            if (GameMappingConfig.isMappingMode()) {
+                return;
+            }
+            if (frame == null) {
+                return;
+            }
+            Point p = convertToDevicePoint(e.getPoint());
+            if (p == null) {
+                return;
+            }
+            float vScroll = -e.getWheelRotation() * 0.1f;
+            ControlService.sendScroll((int) p.getX(), (int) p.getY(), 0, vScroll);
         });
     }
 
@@ -239,8 +326,9 @@ public class ContentPanel extends JPanel {
 
         int iw = frame.getWidth();
         int ih = frame.getHeight();
-        int pw = getWidth();
-        int ph = getHeight();
+        Dimension surf = resolveRenderSurfaceSize();
+        int pw = surf.width;
+        int ph = surf.height;
 
         if (pw <= 0 || ph <= 0 || iw <= 0 || ih <= 0) {
             return componentPoint;
@@ -281,8 +369,9 @@ public class ContentPanel extends JPanel {
         }
         int iw = frame.getWidth();
         int ih = frame.getHeight();
-        int pw = getWidth();
-        int ph = getHeight();
+        Dimension surf = resolveRenderSurfaceSize();
+        int pw = surf.width;
+        int ph = surf.height;
         if (pw <= 0 || ph <= 0 || iw <= 0 || ih <= 0) {
             return null;
         }
@@ -405,7 +494,7 @@ public class ContentPanel extends JPanel {
         if (needsWarp) {
             gameMouseListening = false;
             Point screen = new Point(newLocalX, newLocalY);
-            SwingUtilities.convertPointToScreen(screen, this);
+            SwingUtilities.convertPointToScreen(screen, lwjglVideo != null ? lwjglVideo : this);
             gameRobot.mouseMove(screen.x, screen.y);
             gameLastMousePos = new Point(newLocalX, newLocalY);
             gameMouseListening = true;
@@ -428,7 +517,7 @@ public class ContentPanel extends JPanel {
         x = Math.min(vr.x + vr.width - margin, x);
         y = Math.min(vr.y + vr.height - margin, y);
         Point screen = new Point(x, y);
-        SwingUtilities.convertPointToScreen(screen, this);
+        SwingUtilities.convertPointToScreen(screen, lwjglVideo != null ? lwjglVideo : this);
         gameMouseListening = false;
         gameRobot.mouseMove(screen.x, screen.y);
         gameLastMousePos = new Point(x, y);
@@ -607,6 +696,9 @@ public class ContentPanel extends JPanel {
         final boolean resolutionChanged = (currentWidth != w || currentHeight != h);
 
         SwingUtilities.invokeLater(() -> {
+            if (shouldCloseLoading) {
+                Logger.info("渲染模式: " + (lwjglVideo != null ? "GPU(LWJGL)" : "CPU(Swing)"));
+            }
             ensureRenderImageBuffer(w, h);
             System.arraycopy(packedBgr, 0, renderImageBytes, 0, need);
 
@@ -631,7 +723,20 @@ public class ContentPanel extends JPanel {
                 }
             }
 
-            repaint();
+            if (lwjglVideo != null) {
+                lwjglVideo.submitFrame(renderImageBytes, w, h);
+                if (!lwjglVideo.isRenderHealthy()) {
+                    Logger.warn("LWJGL 渲染不可用，自动回退 CPU 绘制");
+                    lwjglVideo = null;
+                    removeAll();
+                    setLayout(new BorderLayout());
+                    attachMouseListeners(this);
+                    revalidate();
+                    repaint();
+                }
+            } else {
+                repaint();
+            }
 
             if (shouldCloseLoading && loadingDialog != null) {
                 loadingDialog.dispose();
@@ -648,121 +753,23 @@ public class ContentPanel extends JPanel {
         SwingUtilities.invokeLater(this::repaint);
     }
 
-    @Override
-    protected void paintComponent(Graphics g) {
-        super.paintComponent(g);
-        BufferedImage img = frame;
-        if (img == null) {
-            return;
-        }
-        Graphics2D g2 = (Graphics2D) g.create();
-        try {
-            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-            int pw = getWidth();
-            int ph = getHeight();
-            int iw = img.getWidth();
-            int ih = img.getHeight();
-            if (pw <= 0 || ph <= 0 || iw <= 0 || ih <= 0) {
-                return;
-            }
-            double scale = Math.min(1.0, Math.min((double) pw / iw, (double) ph / ih));
-            int scaledW = (int) (iw * scale);
-            int scaledH = (int) (ih * scale);
-            int dx = (pw - scaledW) / 2;
-            int dy = (ph - scaledH) / 2;
-            g2.drawImage(img, dx, dy, scaledW, scaledH, null);
-
-            synchronized (clickEffects) {
-                for (ClickEffect effect : clickEffects) {
-                    effect.draw(g2);
-                }
-            }
-        } finally {
-            g2.dispose();
-        }
-    }
-
-    private static class ClickEffect {
-        private final int x;
-        private final int y;
-        private final int maxRadius;
-        private double radius;
-        private double alpha;
-        private double progress;
-        private boolean finished;
-
-        private static final double DURATION = 0.4;
-        private static final double INITIAL_RADIUS = 3;
-        private static final double INITIAL_ALPHA = 0.95;
-
-        public ClickEffect(int x, int y) {
-            this.x = x;
-            this.y = y;
-            this.maxRadius = 15;
-            this.radius = INITIAL_RADIUS;
-            this.alpha = INITIAL_ALPHA;
-            this.progress = 0;
-            this.finished = false;
-        }
-
-        public void update(double deltaProgress) {
-            if (finished) return;
-
-            progress += deltaProgress;
-            if (progress >= 1.0) {
-                progress = 1.0;
-                finished = true;
-            }
-
-            double eased = easeOutQuad(progress);
-            radius = INITIAL_RADIUS + (maxRadius - INITIAL_RADIUS) * eased;
-            alpha = INITIAL_ALPHA * (1.0 - eased);
-        }
-
-        private double easeOutQuad(double t) {
-            return t * (2 - t);
-        }
-
-        public boolean isFinished() {
-            return finished;
-        }
-
-        public void draw(Graphics2D g2) {
-            if (finished || alpha <= 0) return;
-
-            g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, (float) alpha));
-            g2.setColor(new Color(255, 80, 80, (int) (alpha * 255)));
-            g2.fillOval(x - (int) radius, y - (int) radius, (int) (radius * 2), (int) (radius * 2));
-
-            g2.setStroke(new BasicStroke(1.5f));
-            g2.setColor(new Color(255, 80, 80, (int) (alpha * 255)));
-            g2.drawOval(x - (int) radius, y - (int) radius, (int) (radius * 2), (int) (radius * 2));
-
-            g2.setComposite(AlphaComposite.SrcOver);
-        }
-    }
-
-    private void addClickEffect(Point screenPoint) {
-        ClickEffect effect = new ClickEffect(screenPoint.x, screenPoint.y);
-
-        synchronized (clickEffects) {
-            while (clickEffects.size() >= 10) {
-                clickEffects.remove(0);
-            }
-            clickEffects.add(effect);
-        }
-    }
+    // 旧版 Swing 画视频/点击波纹已移除：当前视频由 `LwjglVideoCanvas` 绘制。
 
     public void reset() {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(this::reset);
+            return;
+        }
         sizeInitialized = false;
         currentWidth = 0;
         currentHeight = 0;
         frame = null;
-        synchronized (clickEffects) {
-            clickEffects.clear();
+        if (lwjglVideo != null) {
+            lwjglVideo.clearVideo();
         }
         setCursor(Cursor.getPredefinedCursor(Cursor.DEFAULT_CURSOR));
         requestFocusInWindow();
+        repaint();
     }
 
     private Cursor createTransparentCursor() {

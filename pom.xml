@@ -12,7 +12,21 @@
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!-- 与 org.lwjglx:lwjgl3-awt 内置 LWJGL 版本一致（仅 Windows 使用 natives-windows） -->
+        <lwjgl.version>3.3.5</lwjgl.version>
     </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.lwjgl</groupId>
+                <artifactId>lwjgl-bom</artifactId>
+                <version>${lwjgl.version}</version>
+                <scope>import</scope>
+                <type>pom</type>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
 
@@ -73,8 +87,40 @@
             <classifier>windows-x86_64</classifier>
         </dependency>
 
-
-
+        <!-- Windows：Swing 内嵌 OpenGL（lwjgl3-awt + LWJGL3） -->
+        <dependency>
+            <groupId>org.lwjglx</groupId>
+            <artifactId>lwjgl3-awt</artifactId>
+            <version>0.2.3</version>
+        </dependency>
+        <dependency>
+            <groupId>org.lwjgl</groupId>
+            <artifactId>lwjgl</artifactId>
+            <version>${lwjgl.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.lwjgl</groupId>
+            <artifactId>lwjgl</artifactId>
+            <version>${lwjgl.version}</version>
+            <classifier>natives-windows</classifier>
+        </dependency>
+        <dependency>
+            <groupId>org.lwjgl</groupId>
+            <artifactId>lwjgl-opengl</artifactId>
+            <version>${lwjgl.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.lwjgl</groupId>
+            <artifactId>lwjgl-opengl</artifactId>
+            <version>${lwjgl.version}</version>
+            <classifier>natives-windows</classifier>
+        </dependency>
+        <!-- 无 natives-windows 变体：平台库在 lwjgl / lwjgl-opengl 的 natives 中 -->
+        <dependency>
+            <groupId>org.lwjgl</groupId>
+            <artifactId>lwjgl-jawt</artifactId>
+            <version>${lwjgl.version}</version>
+        </dependency>
 
     </dependencies>
 

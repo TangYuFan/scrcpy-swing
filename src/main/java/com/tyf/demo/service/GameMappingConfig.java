@@ -291,12 +291,23 @@ public class GameMappingConfig {
     }
 
     private static volatile boolean mappingMode = false;
+    /** 映射调试：在 LWJGL 画面上显示坐标涟漪（不持久化到 config.json） */
+    private static volatile boolean debugShowMappingRipple = true;
     private static final List<MappingEntry> mappings = new ArrayList<>();
     private static final String MAPPING_CONFIG_FILE = ConstService.MAPPING_DIR + "config.json";
     private static final Gson gson = new GsonBuilder().setPrettyPrinting().create();
 
     public static boolean isMappingMode() {
         return mappingMode;
+    }
+
+    public static boolean isDebugShowMappingRipple() {
+        return debugShowMappingRipple;
+    }
+
+    public static void setDebugShowMappingRipple(boolean enabled) {
+        debugShowMappingRipple = enabled;
+        Logger.info("game mapping: debugShowMappingRipple=" + enabled);
     }
 
     public static void setMappingMode(boolean mode) {

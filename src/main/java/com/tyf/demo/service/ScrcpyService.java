@@ -483,10 +483,10 @@ public final class ScrcpyService {
                     int len = packed == null ? 0 : packed.length;
                     int expect = w * h * 3;  // BGR 格式，每像素 3 字节
 
-                    // 抽样日志：前 3 帧 + 每隔 300 帧（约每 5 秒）
-                    // if (n <= 3 || n % 300 == 0) {
-                    //     Logger.debug("scrcpy: frame#" + n + " " + w + "x" + h + " bytes=" + len);
-                    // }
+                    // [DEBUG] 解码成功输出帧的日志
+                    if (n <= 5 || n % 60 == 0) {
+                        Logger.info("[DEBUG] ScrcpyService: decoded frame#" + n + " " + w + "x" + h + " bytes=" + len + " packed=" + (packed != null));
+                    }
                     if (ConstService.SCRCPY_DRAW_DECODED_TO_UI && MainPanel.getContentPanel() != null) {
                         MainPanel.getContentPanel().postFramePackedBgr(packed, w, h);
                     }
