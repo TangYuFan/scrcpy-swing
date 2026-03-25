@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 public class GameMappingService {
@@ -72,6 +73,19 @@ public class GameMappingService {
     private static MappingEntry activeLeftButtonEntry;
     private static ScheduledExecutorService actionScheduler;
 
+    // ---------- 视角（鼠标移动 -> 单指拖拽）----------
+    private static final float VIEW_NORM_MIN = 0.05f;
+    private static final float VIEW_NORM_MAX = 0.95f;
+    private static final long MOUSE_VIEW_TIMEOUT_MS = 500L;
+    private static final float VIEW_MOVE_DEADZONE_PX = 0.35f;
+    private static final long MOUSE_VIEW_IGNORE_STEP_MS = 12L;
+    private static volatile boolean mouseViewTouching;
+    private static float mouseViewNormX = 0.5f;
+    private static float mouseViewNormY = 0.5f;
+    private static volatile long ignoreMouseMoveUntilMs;
+    private static ScheduledExecutorService mouseViewScheduler;
+    private static ScheduledFuture<?> mouseViewTimeoutFuture;
+
     public enum RealtimeProfile {
         STABLE,
         BALANCED,
@@ -111,7 +125,9 @@ public class GameMappingService {
         joystickCenterY = 0;
         leftButtonHoldActive = false;
         activeLeftButtonEntry = null;
-        
+        mouseViewStopTouchInternal();
+        ignoreMouseMoveUntilMs = 0L;
+
         // Logger.debug("game mapping: state reset");
     }
 
@@ -506,13 +522,152 @@ public class GameMappingService {
     }
 
     /**
-     * 游戏模式下鼠标相对位移（视角）。实现已移除，请在此重新接入触摸 drag。
+     * 游戏模式下鼠标相对位移：单指持续拖拽，映射视角（与摇杆不同 pointerId，可并行）。
+     * 对齐 QtScrcpy：位移先除以 speedRatio，再按视频宽高归一化累加。
      *
      * @param deltaX 相对上一帧的像素位移
      * @param deltaY 相对上一帧的像素位移
      */
     public static void handleMouseMoved(int deltaX, int deltaY) {
-        // TODO: 重新实现视角移动
+        if (!GameMappingConfig.isMappingMode()) {
+            return;
+        }
+        if (!ControlService.isConnected()) {
+            return;
+        }
+        MappingEntry entry = GameMappingConfig.getMouseMoveMapping();
+        if (entry == null || !entry.isEnabled()) {
+            return;
+        }
+
+        long now = System.currentTimeMillis();
+        if (now < ignoreMouseMoveUntilMs) {
+            return;
+        }
+
+        int sw = Math.max(1, currentVideoWidth);
+        int sh = Math.max(1, currentVideoHeight);
+        int sens = Math.max(1, Math.min(10, entry.getMouseSensitivity()));
+        float speedRatio = resolveViewSpeedRatio(sens);
+
+        float rdx = deltaX;
+        float rdy = deltaY;
+        if (Math.abs(rdx) < VIEW_MOVE_DEADZONE_PX) {
+            rdx = 0f;
+        }
+        if (Math.abs(rdy) < VIEW_MOVE_DEADZONE_PX) {
+            rdy = 0f;
+        }
+        if (rdx == 0f && rdy == 0f) {
+            return;
+        }
+
+        float dnx = (rdx / speedRatio) / (float) sw;
+        float dny = (rdy / speedRatio) / (float) sh;
+
+        synchronized (GameMappingService.class) {
+            if (!mouseViewTouching) {
+                mouseViewStartTouch(entry);
+            }
+            resetMouseViewTimeout();
+
+            float nx = mouseViewNormX + dnx;
+            float ny = mouseViewNormY + dny;
+
+            if (nx < VIEW_NORM_MIN || nx > VIEW_NORM_MAX || ny < VIEW_NORM_MIN || ny > VIEW_NORM_MAX) {
+                mouseViewStopTouchInternal();
+                ignoreNextMouseMoves(4);
+                return;
+            }
+
+            mouseViewNormX = nx;
+            mouseViewNormY = ny;
+
+            int px = clampInt((int) Math.round(mouseViewNormX * (sw - 1)), 0, sw - 1);
+            int py = clampInt((int) Math.round(mouseViewNormY * (sh - 1)), 0, sh - 1);
+            ControlService.sendTouchMove(PTR_MOUSE_VIEW, px, py);
+        }
+    }
+
+    /**
+     * 鼠标回绕等场景下忽略若干次位移，避免 delta 爆 spike。
+     */
+    public static void ignoreNextMouseMoves(int count) {
+        if (count <= 0) {
+            return;
+        }
+        long until = System.currentTimeMillis() + (long) count * MOUSE_VIEW_IGNORE_STEP_MS;
+        ignoreMouseMoveUntilMs = Math.max(ignoreMouseMoveUntilMs, until);
+    }
+
+    private static float resolveViewSpeedRatio(int sensitivity) {
+        // 数值越大越灵敏（同位移转得越快）：speedRatio 越小
+        float minR = 8f;
+        float maxR = 1f;
+        return minR - (sensitivity - 1) * (minR - maxR) / 9f;
+    }
+
+    private static void mouseViewStartTouch(MappingEntry entry) {
+        float sx = entry.getPhoneX();
+        float sy = entry.getPhoneY();
+        if (sx <= 0f && sy <= 0f) {
+            sx = 0.5f;
+            sy = 0.5f;
+        }
+        mouseViewNormX = Math.max(VIEW_NORM_MIN, Math.min(VIEW_NORM_MAX, sx));
+        mouseViewNormY = Math.max(VIEW_NORM_MIN, Math.min(VIEW_NORM_MAX, sy));
+        int sw = Math.max(1, currentVideoWidth);
+        int sh = Math.max(1, currentVideoHeight);
+        int px = clampInt((int) Math.round(mouseViewNormX * (sw - 1)), 0, sw - 1);
+        int py = clampInt((int) Math.round(mouseViewNormY * (sh - 1)), 0, sh - 1);
+        ControlService.sendTouchDown(PTR_MOUSE_VIEW, px, py, ControlMessage.AMOTION_EVENT_BUTTON_PRIMARY);
+        mouseViewTouching = true;
+        ControlService.flushTouchOutput();
+    }
+
+    private static void mouseViewStopTouchInternal() {
+        synchronized (GameMappingService.class) {
+            if (!mouseViewTouching) {
+                cancelMouseViewTimeout();
+                return;
+            }
+            int sw = Math.max(1, currentVideoWidth);
+            int sh = Math.max(1, currentVideoHeight);
+            int px = clampInt((int) Math.round(mouseViewNormX * (sw - 1)), 0, sw - 1);
+            int py = clampInt((int) Math.round(mouseViewNormY * (sh - 1)), 0, sh - 1);
+            ControlService.sendTouchUp(PTR_MOUSE_VIEW, px, py);
+            mouseViewTouching = false;
+            cancelMouseViewTimeout();
+            ControlService.flushTouchOutput();
+        }
+    }
+
+    private static void ensureMouseViewScheduler() {
+        if (mouseViewScheduler == null || mouseViewScheduler.isShutdown()) {
+            mouseViewScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "game-mapping-mouse-view");
+                t.setDaemon(true);
+                return t;
+            });
+        }
+    }
+
+    private static void resetMouseViewTimeout() {
+        cancelMouseViewTimeout();
+        ensureMouseViewScheduler();
+        mouseViewTimeoutFuture = mouseViewScheduler.schedule(
+                () -> mouseViewStopTouchInternal(), MOUSE_VIEW_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+    }
+
+    private static void cancelMouseViewTimeout() {
+        if (mouseViewTimeoutFuture != null && !mouseViewTimeoutFuture.isDone()) {
+            mouseViewTimeoutFuture.cancel(false);
+        }
+        mouseViewTimeoutFuture = null;
+    }
+
+    private static int clampInt(int v, int lo, int hi) {
+        return Math.max(lo, Math.min(hi, v));
     }
 
     private static void ensureActionScheduler() {

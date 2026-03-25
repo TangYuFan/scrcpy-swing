@@ -88,6 +88,14 @@ public class ContentPanel extends JPanel {
 
         addMouseListener(new MouseAdapter() {
             @Override
+            public void mouseEntered(MouseEvent e) {
+                if (GameMappingConfig.isMappingMode()) {
+                    // 避免从面板外回到视频区时，用上一帧位置算出超大 delta
+                    gameLastMousePos = null;
+                }
+            }
+
+            @Override
             public void mousePressed(MouseEvent e) {
                 if (GameMappingConfig.isMappingMode()) {
                     requestFocusInWindow();
@@ -306,22 +314,34 @@ public class ContentPanel extends JPanel {
         return new Rectangle(capX, capY, capW, capH);
     }
 
+    private void ensureGameRobot() {
+        if (gameRobot != null) {
+            return;
+        }
+        try {
+            gameRobot = new java.awt.Robot();
+        } catch (Exception ex) {
+            gameRobot = null;
+        }
+    }
+
     private void handleGameModeMouseMotion(MouseEvent e) {
         if (!gameMouseListening) {
             return;
         }
-        
+
         if (!gameCursorHidden) {
             setCursor(createTransparentCursor());
             gameCursorHidden = true;
-            try {
-                gameRobot = new java.awt.Robot();
-            } catch (Exception ex) {
-                gameRobot = null;
-            }
         }
+        ensureGameRobot();
 
-        if (!isPointInVideoArea(e.getPoint())) {
+        Point p = e.getPoint();
+        // 在黑边等非视频区域时原先直接 return，既不回绕也不更新 lastPos，易导致失控与下次巨大 delta
+        if (!isPointInVideoArea(p)) {
+            if (gameRobot != null) {
+                warpToCaptureSafeArea();
+            }
             return;
         }
 
@@ -329,51 +349,72 @@ public class ContentPanel extends JPanel {
             int deltaX = e.getX() - gameLastMousePos.x;
             int deltaY = e.getY() - gameLastMousePos.y;
             GameMappingService.handleMouseMoved(deltaX, deltaY);
-            checkAndWarpMouseInCaptureRect(e.getPoint());
+            checkAndWarpMouseInCaptureRect(p);
         }
-        gameLastMousePos = e.getPoint();
+        gameLastMousePos = p;
+    }
+
+    /**
+     * 捕获区边缘“安全带”宽度：随窗口变大，快速甩动时仍有机会在单帧内触发回绕。
+     */
+    private static int resolveCaptureMargin(Rectangle vr) {
+        int minSide = Math.max(1, Math.min(vr.width, vr.height));
+        // 约 6%～25% 边长，且不少于 52px，避免单帧跨过边缘带
+        int m = Math.max(52, minSide / 6);
+        m = Math.min(m, minSide / 3 - 2);
+        return Math.max(40, m);
     }
 
     private void checkAndWarpMouseInCaptureRect(Point localPos) {
         if (gameRobot == null) {
             return;
         }
-        int margin = 30;
-        boolean needsWarp = false;
-        int newLocalX = localPos.x;
-        int newLocalY = localPos.y;
         Rectangle vr = getMouseCaptureRect();
         if (vr == null) {
             return;
         }
+        int margin = resolveCaptureMargin(vr);
+        boolean needsWarp = false;
+        int newLocalX = localPos.x;
+        int newLocalY = localPos.y;
 
-        if (localPos.x <= vr.x + margin) {
-            newLocalX = vr.x + vr.width - margin;
+        if (!vr.contains(localPos.x, localPos.y)) {
             needsWarp = true;
-        } else if (localPos.x >= vr.x + vr.width - margin) {
-            newLocalX = vr.x + margin;
-            needsWarp = true;
-        }
+            newLocalX = vr.x + Math.max(margin, vr.width / 2);
+            newLocalY = vr.y + Math.max(margin, vr.height / 2);
+            newLocalX = Math.min(vr.x + vr.width - margin, newLocalX);
+            newLocalY = Math.min(vr.y + vr.height - margin, newLocalY);
+        } else {
+            if (localPos.x <= vr.x + margin) {
+                newLocalX = vr.x + vr.width - margin;
+                needsWarp = true;
+            } else if (localPos.x >= vr.x + vr.width - margin) {
+                newLocalX = vr.x + margin;
+                needsWarp = true;
+            }
 
-        if (localPos.y <= vr.y + margin) {
-            newLocalY = vr.y + vr.height - margin;
-            needsWarp = true;
-        } else if (localPos.y >= vr.y + vr.height - margin) {
-            newLocalY = vr.y + margin;
-            needsWarp = true;
+            if (localPos.y <= vr.y + margin) {
+                newLocalY = vr.y + vr.height - margin;
+                needsWarp = true;
+            } else if (localPos.y >= vr.y + vr.height - margin) {
+                newLocalY = vr.y + margin;
+                needsWarp = true;
+            }
         }
 
         if (needsWarp) {
             gameMouseListening = false;
-            Point p = new Point(newLocalX, newLocalY);
-            SwingUtilities.convertPointToScreen(p, this);
-            gameRobot.mouseMove(p.x, p.y);
+            Point screen = new Point(newLocalX, newLocalY);
+            SwingUtilities.convertPointToScreen(screen, this);
+            gameRobot.mouseMove(screen.x, screen.y);
             gameLastMousePos = new Point(newLocalX, newLocalY);
             gameMouseListening = true;
+            GameMappingService.ignoreNextMouseMoves(5);
         }
     }
 
     private void warpToCaptureSafeArea() {
+        ensureGameRobot();
         if (gameRobot == null) {
             return;
         }
@@ -381,17 +422,18 @@ public class ContentPanel extends JPanel {
         if (vr == null) {
             return;
         }
-        int margin = 30;
+        int margin = resolveCaptureMargin(vr);
         int x = vr.x + Math.max(margin, vr.width / 2);
         int y = vr.y + Math.max(margin, vr.height / 2);
         x = Math.min(vr.x + vr.width - margin, x);
         y = Math.min(vr.y + vr.height - margin, y);
-        Point p = new Point(x, y);
-        SwingUtilities.convertPointToScreen(p, this);
+        Point screen = new Point(x, y);
+        SwingUtilities.convertPointToScreen(screen, this);
         gameMouseListening = false;
-        gameRobot.mouseMove(p.x, p.y);
+        gameRobot.mouseMove(screen.x, screen.y);
         gameLastMousePos = new Point(x, y);
         gameMouseListening = true;
+        GameMappingService.ignoreNextMouseMoves(5);
     }
 
     private void handleKeyPressed(KeyEvent e) {
