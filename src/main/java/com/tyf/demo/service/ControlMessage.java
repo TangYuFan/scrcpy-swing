@@ -20,6 +20,7 @@ public final class ControlMessage {
     public static final int TYPE_SET_CLIPBOARD = 9;
     public static final int TYPE_SET_DISPLAY_POWER = 10;
     public static final int TYPE_ROTATE_DEVICE = 11;
+    public static final int TYPE_INJECT_MOUSE_MOVE_EVENT = 12;
 
     // 按键动作
     public static final int ACTION_DOWN = 0;
@@ -59,6 +60,8 @@ public final class ControlMessage {
     private float vScroll;
     private int buttons;
     private int actionButton;
+    private int motionEventX;
+    private int motionEventY;
 
     private ControlMessage() {}
 
@@ -123,6 +126,14 @@ public final class ControlMessage {
         return msg;
     }
 
+    public static ControlMessage createInjectMouseMoveEvent(int motionX, int motionY) {
+        ControlMessage msg = new ControlMessage();
+        msg.type = TYPE_INJECT_MOUSE_MOVE_EVENT;
+        msg.motionEventX = motionX;
+        msg.motionEventY = motionY;
+        return msg;
+    }
+
     // Getters
     public int getType() { return type; }
     public int getAction() { return action; }
@@ -140,6 +151,8 @@ public final class ControlMessage {
     public float getVScroll() { return vScroll; }
     public int getButtons() { return buttons; }
     public int getActionButton() { return actionButton; }
+    public int getMotionEventX() { return motionEventX; }
+    public int getMotionEventY() { return motionEventY; }
 
     /**
      *   @desc : 将 float pressure [0,1] 转换为 u16 fixed point

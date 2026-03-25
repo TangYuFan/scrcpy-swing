@@ -157,6 +157,20 @@ public final class ControlService {
     }
 
     /**
+     * 立即刷新控制通道中的触摸缓冲（用于摇杆 DOWN 后首条 MOVE 等与下行顺序强相关的场景）。
+     */
+    public static void flushTouchOutput() {
+        ControlChannel ch = controlChannel.get();
+        if (ch != null) {
+            try {
+                ch.flushOutputNow();
+            } catch (IOException e) {
+                Logger.error("control: flush touch output failed - " + e.getMessage());
+            }
+        }
+    }
+
+    /**
      *   @desc : 右键按下
      *   @auth : tyf
      *   @date : 2026-03-21
@@ -235,6 +249,20 @@ public final class ControlService {
             ch.send(msg);
         } catch (IOException e) {
             Logger.error("control: send scroll failed - " + e.getMessage());
+        }
+    }
+
+    public static void sendMouseMove(int motionX, int motionY) {
+        ControlChannel ch = controlChannel.get();
+        if (ch == null) {
+            return;
+        }
+
+        try {
+            ControlMessage msg = ControlMessage.createInjectMouseMoveEvent(motionX, motionY);
+            ch.send(msg);
+        } catch (IOException e) {
+            Logger.error("control: send mouse move failed - " + e.getMessage());
         }
     }
 

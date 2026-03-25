@@ -23,7 +23,7 @@ import java.util.concurrent.TimeUnit;
 public class ContentPanel extends JPanel {
 
     /** 游戏模式鼠标捕获区占视频区域比例（宽/高），用于限制在中心小区域内循环 */
-    private static final double MOUSE_CAPTURE_RATIO = 0.38;
+    private static final double MOUSE_CAPTURE_RATIO = 0.80;
 
     private volatile BufferedImage frame;
     private static JDialog loadingDialog;
@@ -39,6 +39,7 @@ public class ContentPanel extends JPanel {
     private Point gameLastMousePos;
     private boolean gameCursorHidden = false;
     private java.awt.Robot gameRobot;
+    private volatile boolean gameMouseListening = true;
 
     public ContentPanel() {
         setLayout(new BorderLayout());
@@ -306,6 +307,10 @@ public class ContentPanel extends JPanel {
     }
 
     private void handleGameModeMouseMotion(MouseEvent e) {
+        if (!gameMouseListening) {
+            return;
+        }
+        
         if (!gameCursorHidden) {
             setCursor(createTransparentCursor());
             gameCursorHidden = true;
@@ -317,8 +322,6 @@ public class ContentPanel extends JPanel {
         }
 
         if (!isPointInVideoArea(e.getPoint())) {
-            warpToCaptureSafeArea();
-            gameLastMousePos = null;
             return;
         }
 
@@ -361,11 +364,12 @@ public class ContentPanel extends JPanel {
         }
 
         if (needsWarp) {
+            gameMouseListening = false;
             Point p = new Point(newLocalX, newLocalY);
             SwingUtilities.convertPointToScreen(p, this);
             gameRobot.mouseMove(p.x, p.y);
-            gameLastMousePos = null;
-            GameMappingService.ignoreNextMouseMoves(3);
+            gameLastMousePos = new Point(newLocalX, newLocalY);
+            gameMouseListening = true;
         }
     }
 
@@ -384,9 +388,10 @@ public class ContentPanel extends JPanel {
         y = Math.min(vr.y + vr.height - margin, y);
         Point p = new Point(x, y);
         SwingUtilities.convertPointToScreen(p, this);
+        gameMouseListening = false;
         gameRobot.mouseMove(p.x, p.y);
-        gameLastMousePos = null;
-        GameMappingService.ignoreNextMouseMoves(4);
+        gameLastMousePos = new Point(x, y);
+        gameMouseListening = true;
     }
 
     private void handleKeyPressed(KeyEvent e) {

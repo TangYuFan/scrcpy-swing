@@ -41,6 +41,9 @@ final class ControlChannel {
             case ControlMessage.TYPE_BACK_OR_SCREEN_ON:
                 writeBackOrScreenOn(msg);
                 break;
+            case ControlMessage.TYPE_INJECT_MOUSE_MOVE_EVENT:
+                writeInjectMouseMoveEvent(msg);
+                break;
             default:
                 writeEmpty(msg.getType());
                 break;
@@ -148,8 +151,13 @@ final class ControlChannel {
         
         // 写入并刷新
         out.write(data);
-        flushForTouchLike();
-        
+        // DOWN 必须立即刷出，否则与紧随的 MOVE 同批缓冲时，端上可能先看到错误轨迹（例如先斜向再回正）
+        if (msg.getAction() == ControlMessage.ACTION_DOWN_TOUCH) {
+            flushNow();
+        } else {
+            flushForTouchLike();
+        }
+
         // 打印十六进制（调试用）
         // StringBuilder hex = new StringBuilder();
         // for (byte b : data) {
@@ -179,6 +187,14 @@ final class ControlChannel {
         flushNow();
     }
 
+    // TYPE_INJECT_MOUSE_MOVE_EVENT: type(1) + motionX(4) + motionY(4) = 9 bytes
+    private void writeInjectMouseMoveEvent(ControlMessage msg) throws IOException {
+        writeByte(ControlMessage.TYPE_INJECT_MOUSE_MOVE_EVENT);
+        writeInt(msg.getMotionEventX());
+        writeInt(msg.getMotionEventY());
+        flushNow();
+    }
+    
     // 空消息: type(1) = 1 byte
     private void writeEmpty(int type) throws IOException {
         out.write(type);
@@ -197,5 +213,10 @@ final class ControlChannel {
         out.flush();
         pendingTouchWrites = 0;
         lastFlushNs = System.nanoTime();
+    }
+
+    /** 供摇杆等场景在 DOWN+首帧 MOVE 后强制刷出，避免 MOVE 滞留在缓冲里 */
+    void flushOutputNow() throws IOException {
+        flushNow();
     }
 }

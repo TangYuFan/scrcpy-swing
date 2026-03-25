@@ -14,28 +14,13 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 public class GameMappingService {
 
-    private static final long MOUSE_MOVE_TIMEOUT_MS = 500;
-    private static final long MOUSE_MOVE_IGNORE_BASE_MS = 12;
-    private static final float VIEW_TOUCH_MIN = 0.05f;
-    private static final float VIEW_TOUCH_MAX = 0.95f;
-    private static final float MOUSE_DELTA_EMA_ALPHA = 0.42f;
-    private static final float MOUSE_DEADZONE_PX = 0.35f;
-    private static final float MOUSE_DELTA_MAX_PX = 140f;
-    private static final float MOUSE_SENSITIVITY_MIN_GAIN = 0.12f;
-    private static final long MOUSE_MOVE_PUMP_PERIOD_MS = 8L; // ~125Hz
-    private static final float MOUSE_VIEW_STEP_MAX_NORM = 0.012f;
-    private static final int MOUSE_VIEW_MAX_STEPS_PER_TICK = 6;
-    private static volatile float mouseDeltaEmaAlpha = MOUSE_DELTA_EMA_ALPHA;
-    private static volatile long mouseMoveIgnoreBaseMs = MOUSE_MOVE_IGNORE_BASE_MS;
-    private static volatile float mouseDeadzonePx = MOUSE_DEADZONE_PX;
-    private static volatile float mouseDeltaMaxPx = MOUSE_DELTA_MAX_PX;
+    /** 视角滑动专用 pointerId，重新实现视角移动时可沿用 */
+    public static final long PTR_MOUSE_VIEW = 1002L;
     private static final long PTR_JOYSTICK = 1001L;
-    private static final long PTR_MOUSE_VIEW = 1002L;
     private static final long PTR_LEFT_LONG = 1003L;
     private static final long PTR_RIGHT_AIM = 1004L;
     private static final long PTR_CLICK_BASE = 2000L;
@@ -54,6 +39,26 @@ public class GameMappingService {
     private static final Map<Integer, MappingEntry> keyboardHoldActive = new HashMap<>();
 
     private static final boolean[] wasdDown = new boolean[4];
+    /** 仅允许：单键 W/A/S/D 与斜向 WA、WD、AS、SD；由 collapseWasdToEight() 维护 */
+    private enum WasdChord {
+        NONE,
+        W,
+        A,
+        S,
+        D,
+        WA,
+        WD,
+        AS,
+        SD
+    }
+
+    private static WasdChord wasdChord = WasdChord.NONE;
+    /** 竖直轴 W/S 最后按下：0=W，2=S，-1=无 */
+    private static int lastWasdVertical = -1;
+    /** 水平轴 A/D 最后按下：1=A，3=D，-1=无 */
+    private static int lastWasdHorizontal = -1;
+    /** 最后一次按下的 WASD 键索引 0..3（用于无法归类时退化为单键） */
+    private static int lastPressedWasdIdx = -1;
     private static volatile boolean runModifierDown;
     private static volatile boolean walkSlowModifierDown;
 
@@ -66,17 +71,6 @@ public class GameMappingService {
     private static volatile boolean leftButtonHoldActive;
     private static MappingEntry activeLeftButtonEntry;
     private static ScheduledExecutorService actionScheduler;
-    private static ScheduledExecutorService mouseMoveScheduler;
-
-    // 鼠标移动视角相关状态
-    private static boolean mouseMoveTouching = false;
-    private static float mouseMoveX = 0.5f;
-    private static float mouseMoveY = 0.5f;
-    private static long ignoreMouseMoveUntilMs = 0L;
-    private static float pendingMouseDx = 0f;
-    private static float pendingMouseDy = 0f;
-    private static ScheduledFuture<?> mouseMoveTimeoutFuture;
-    private static ScheduledFuture<?> mouseMovePumpFuture;
 
     public enum RealtimeProfile {
         STABLE,
@@ -90,31 +84,11 @@ public class GameMappingService {
         applyRealtimeProfile(RealtimeProfile.BALANCED);
     }
 
+    /**
+     * 预留：实时档位（原用于视角移动等参数，已清空，可在重新实现时接入）。
+     */
     public static void applyRealtimeProfile(RealtimeProfile profile) {
-        if (profile == null) {
-            profile = RealtimeProfile.BALANCED;
-        }
-        switch (profile) {
-            case STABLE:
-                mouseDeltaEmaAlpha = 0.32f;
-                mouseMoveIgnoreBaseMs = 14L;
-                mouseDeadzonePx = 0.45f;
-                mouseDeltaMaxPx = 110f;
-                break;
-            case RESPONSIVE:
-                mouseDeltaEmaAlpha = 0.56f;
-                mouseMoveIgnoreBaseMs = 9L;
-                mouseDeadzonePx = 0.25f;
-                mouseDeltaMaxPx = 180f;
-                break;
-            case BALANCED:
-            default:
-                mouseDeltaEmaAlpha = MOUSE_DELTA_EMA_ALPHA;
-                mouseMoveIgnoreBaseMs = MOUSE_MOVE_IGNORE_BASE_MS;
-                mouseDeadzonePx = MOUSE_DEADZONE_PX;
-                mouseDeltaMaxPx = MOUSE_DELTA_MAX_PX;
-                break;
-        }
+        // no-op
     }
 
     public static void resetState() {
@@ -123,6 +97,10 @@ public class GameMappingService {
         for (int i = 0; i < wasdDown.length; i++) {
             wasdDown[i] = false;
         }
+        lastWasdVertical = -1;
+        lastWasdHorizontal = -1;
+        lastPressedWasdIdx = -1;
+        wasdChord = WasdChord.NONE;
         runModifierDown = false;
         walkSlowModifierDown = false;
         if (joystickTouchActive) {
@@ -133,13 +111,6 @@ public class GameMappingService {
         joystickCenterY = 0;
         leftButtonHoldActive = false;
         activeLeftButtonEntry = null;
-        
-        mouseMoveStopTouch();
-        ignoreMouseMoveUntilMs = 0L;
-        synchronized (GameMappingService.class) {
-            pendingMouseDx = 0f;
-            pendingMouseDy = 0f;
-        }
         
         // Logger.debug("game mapping: state reset");
     }
@@ -161,12 +132,15 @@ public class GameMappingService {
         if (wasdIdx >= 0) {
             MappingEntry joy = GameMappingConfig.getJoystickMapping();
             if (joy != null && joy.isEnabled()) {
-                if (wasdDown[wasdIdx]) {
-                    return;
-                }
-                // 防止 release 丢失导致对向键粘连（典型表现：始终偏向某一方向）
-                clearOppositeWasdState(wasdIdx);
+                // 不可在「已按下」时直接 return：系统会对长按重复触发 keyPressed，
+                // 许多游戏需要持续的 touchMove 才能保持移动。
                 wasdDown[wasdIdx] = true;
+                lastPressedWasdIdx = wasdIdx;
+                if (wasdIdx == 0 || wasdIdx == 2) {
+                    lastWasdVertical = wasdIdx;
+                } else {
+                    lastWasdHorizontal = wasdIdx;
+                }
                 updateJoystickTouch(joy);
                 return;
             }
@@ -174,9 +148,6 @@ public class GameMappingService {
 
         MappingEntry runMapping = GameMappingConfig.findBuiltinMapping(BuiltinMappingIds.RUN);
         if (runMapping != null && runMapping.getTriggerType() == TriggerType.KEYBOARD && runMapping.getKeyCode() == keyCode) {
-            if (runModifierDown) {
-                return;
-            }
             runModifierDown = true;
             MappingEntry joy = GameMappingConfig.getJoystickMapping();
             if (joy != null && joy.isEnabled()) {
@@ -189,9 +160,6 @@ public class GameMappingService {
         if (walkSlowMapping != null
                 && walkSlowMapping.getTriggerType() == TriggerType.KEYBOARD
                 && walkSlowMapping.getKeyCode() == keyCode) {
-            if (walkSlowModifierDown) {
-                return;
-            }
             walkSlowModifierDown = true;
             MappingEntry joy = GameMappingConfig.getJoystickMapping();
             if (joy != null && joy.isEnabled()) {
@@ -246,6 +214,15 @@ public class GameMappingService {
                     return;
                 }
                 wasdDown[wasdIdx] = false;
+                if (wasdIdx == 0 || wasdIdx == 2) {
+                    if (lastWasdVertical == wasdIdx) {
+                        lastWasdVertical = wasdDown[0] ? 0 : (wasdDown[2] ? 2 : -1);
+                    }
+                } else {
+                    if (lastWasdHorizontal == wasdIdx) {
+                        lastWasdHorizontal = wasdDown[1] ? 1 : (wasdDown[3] ? 3 : -1);
+                    }
+                }
                 updateJoystickTouch(joy);
                 return;
             }
@@ -298,42 +275,179 @@ public class GameMappingService {
         return -1;
     }
 
-    private static void clearOppositeWasdState(int idx) {
-        if (idx == 0) { // W
-            wasdDown[2] = false; // clear S
-        } else if (idx == 2) { // S
-            wasdDown[0] = false; // clear W
-        } else if (idx == 1) { // A
-            wasdDown[3] = false; // clear D
-        } else if (idx == 3) { // D
-            wasdDown[1] = false; // clear A
+    /**
+     * 同轴对向只保留「最后按下」一侧，再映射到 8 种合法和弦之一并写回 wasdDown。
+     */
+    private static void collapseWasdToEight() {
+        if (wasdDown[0] && wasdDown[2]) {
+            if (lastWasdVertical == 2) {
+                wasdDown[0] = false;
+            } else {
+                wasdDown[2] = false;
+            }
+        }
+        if (wasdDown[1] && wasdDown[3]) {
+            if (lastWasdHorizontal == 3) {
+                wasdDown[1] = false;
+            } else {
+                wasdDown[3] = false;
+            }
+        }
+        boolean w = wasdDown[0];
+        boolean a = wasdDown[1];
+        boolean s = wasdDown[2];
+        boolean d = wasdDown[3];
+        WasdChord chord = chordFromPhysicalKeys(w, a, s, d);
+        if (chord == null) {
+            chord = chordFallbackSingle(lastPressedWasdIdx);
+        }
+        applyWasdChord(chord);
+    }
+
+    private static WasdChord chordFromPhysicalKeys(boolean w, boolean a, boolean s, boolean d) {
+        int n = (w ? 1 : 0) + (a ? 1 : 0) + (s ? 1 : 0) + (d ? 1 : 0);
+        if (n == 0) {
+            return WasdChord.NONE;
+        }
+        if (n == 1) {
+            if (w) {
+                return WasdChord.W;
+            }
+            if (a) {
+                return WasdChord.A;
+            }
+            if (s) {
+                return WasdChord.S;
+            }
+            return WasdChord.D;
+        }
+        if (n == 2) {
+            if (w && a && !s && !d) {
+                return WasdChord.WA;
+            }
+            if (w && d && !a && !s) {
+                return WasdChord.WD;
+            }
+            if (a && s && !w && !d) {
+                return WasdChord.AS;
+            }
+            if (s && d && !w && !a) {
+                return WasdChord.SD;
+            }
+            return null;
+        }
+        return null;
+    }
+
+    private static WasdChord chordFallbackSingle(int idx) {
+        if (idx == 0) {
+            return WasdChord.W;
+        }
+        if (idx == 1) {
+            return WasdChord.A;
+        }
+        if (idx == 2) {
+            return WasdChord.S;
+        }
+        if (idx == 3) {
+            return WasdChord.D;
+        }
+        return WasdChord.NONE;
+    }
+
+    private static void applyWasdChord(WasdChord c) {
+        wasdChord = c;
+        for (int i = 0; i < 4; i++) {
+            wasdDown[i] = false;
+        }
+        switch (c) {
+            case NONE:
+                break;
+            case W:
+                wasdDown[0] = true;
+                break;
+            case A:
+                wasdDown[1] = true;
+                break;
+            case S:
+                wasdDown[2] = true;
+                break;
+            case D:
+                wasdDown[3] = true;
+                break;
+            case WA:
+                wasdDown[0] = true;
+                wasdDown[1] = true;
+                break;
+            case WD:
+                wasdDown[0] = true;
+                wasdDown[3] = true;
+                break;
+            case AS:
+                wasdDown[1] = true;
+                wasdDown[2] = true;
+                break;
+            case SD:
+                wasdDown[2] = true;
+                wasdDown[3] = true;
+                break;
+            default:
+                break;
         }
     }
 
+
+    private static void chordToDirection(WasdChord chord, float[] outDxDy) {
+        float dx = 0f;
+        float dy = 0f;
+        switch (chord) {
+            case NONE:
+                break;
+            case W:
+                dy = -1f;
+                break;
+            case A:
+                dx = -1f;
+                break;
+            case S:
+                dy = 1f;
+                break;
+            case D:
+                dx = 1f;
+                break;
+            case WA:
+                dx = -0.70710678f;
+                dy = -0.70710678f;
+                break;
+            case WD:
+                dx = 0.70710678f;
+                dy = -0.70710678f;
+                break;
+            case AS:
+                dx = -0.70710678f;
+                dy = 0.70710678f;
+                break;
+            case SD:
+                dx = 0.70710678f;
+                dy = 0.70710678f;
+                break;
+            default:
+                break;
+        }
+        outDxDy[0] = dx;
+        outDxDy[1] = dy;
+    }
+
     private static void updateJoystickTouch(MappingEntry entry) {
-        float dx = 0;
-        float dy = 0;
-        if (wasdDown[0]) {
-            dy -= 1;
-        }
-        if (wasdDown[2]) {
-            dy += 1;
-        }
-        if (wasdDown[1]) {
-            dx -= 1;
-        }
-        if (wasdDown[3]) {
-            dx += 1;
-        }
-        boolean any = dx != 0 || dy != 0;
-        if (dx != 0 && dy != 0) {
-            dx *= 0.70710678f;
-            dy *= 0.70710678f;
-        }
+        collapseWasdToEight();
+        float[] dir = new float[2];
+        chordToDirection(wasdChord, dir);
+        float dx = dir[0];
+        float dy = dir[1];
+        boolean any = dx != 0f || dy != 0f;
 
         int sw = Math.max(1, currentVideoWidth);
         int sh = Math.max(1, currentVideoHeight);
-        int minSide = Math.min(sw, sh);
         float cx = entry.getPhoneX();
         float cy = entry.getPhoneY();
         float r = resolveJoystickRadius(entry);
@@ -346,15 +460,30 @@ public class GameMappingService {
             return;
         }
 
-        int centerX = (int) (cx * sw);
-        int centerY = (int) (cy * sh);
+        // 在归一化坐标 (0~1) 下计算终点，再映射到像素，避免 (int) 截断中心点 + minSide 混用导致的方位偏差
+        float nx = cx + dx * r;
+        float ny = cy + dy * r;
+        nx = Math.max(0f, Math.min(1f, nx));
+        ny = Math.max(0f, Math.min(1f, ny));
+
+        int px = (int) Math.round(nx * (sw - 1));
+        int py = (int) Math.round(ny * (sh - 1));
+        px = Math.max(0, Math.min(px, sw - 1));
+        py = Math.max(0, Math.min(py, sh - 1));
+
+        int centerX = (int) Math.round(cx * (sw - 1));
+        int centerY = (int) Math.round(cy * (sh - 1));
         centerX = Math.max(0, Math.min(centerX, sw - 1));
         centerY = Math.max(0, Math.min(centerY, sh - 1));
 
-        int px = (int) (centerX + dx * r * minSide);
-        int py = (int) (centerY + dy * r * minSide);
-        px = Math.max(0, Math.min(px, sw - 1));
-        py = Math.max(0, Math.min(py, sh - 1));
+        Logger.info("[joystick] chord={} video={}x{} normCenter=({},{}) pxCenter=({},{}) normTouch=({},{}) pxTouch=({},{}) dx={} dy={} r={}",
+                wasdChord,
+                sw, sh,
+                cx, cy,
+                centerX, centerY,
+                nx, ny,
+                px, py,
+                dx, dy, r);
 
         if (!joystickTouchActive) {
             // 先按住摇杆中心，再拖拽到目标点，确保被游戏识别为“拖动摇杆”
@@ -364,6 +493,8 @@ public class GameMappingService {
             if (px != joystickCenterX || py != joystickCenterY) {
                 ControlService.sendTouchMove(PTR_JOYSTICK, px, py);
             }
+            // DOWN 已在通道内立即 flush；首条 MOVE 仍可能留在缓冲，再刷一次避免端上先处理错误方向的 MOVE
+            ControlService.flushTouchOutput();
             joystickTouchActive = true;
             lastJoystickX = px;
             lastJoystickY = py;
@@ -374,104 +505,14 @@ public class GameMappingService {
         }
     }
 
+    /**
+     * 游戏模式下鼠标相对位移（视角）。实现已移除，请在此重新接入触摸 drag。
+     *
+     * @param deltaX 相对上一帧的像素位移
+     * @param deltaY 相对上一帧的像素位移
+     */
     public static void handleMouseMoved(int deltaX, int deltaY) {
-        if (!GameMappingConfig.isMappingMode()) {
-            return;
-        }
-        if (!ControlService.isConnected()) {
-            return;
-        }
-
-        MappingEntry entry = GameMappingConfig.getMouseMoveMapping();
-        if (entry == null || !entry.isEnabled()) {
-            return;
-        }
-
-        long now = System.currentTimeMillis();
-        if (now < ignoreMouseMoveUntilMs) {
-            return;
-        }
-
-        // 快速移动时先累积增量，再由固定频率发送线程统一下发，避免突发洪峰导致卡顿
-        synchronized (GameMappingService.class) {
-            pendingMouseDx += deltaX;
-            pendingMouseDy += deltaY;
-        }
-        ensureMouseMovePump();
-    }
-
-    public static void ignoreNextMouseMoves(int count) {
-        if (count <= 0) {
-            return;
-        }
-        long until = System.currentTimeMillis() + (long) count * mouseMoveIgnoreBaseMs;
-        ignoreMouseMoveUntilMs = Math.max(ignoreMouseMoveUntilMs, until);
-        synchronized (GameMappingService.class) {
-            pendingMouseDx = 0f;
-            pendingMouseDy = 0f;
-        }
-    }
-
-    private static void mouseMoveStartTouch() {
-        if (mouseMoveTouching) {
-            return;
-        }
-
-        MappingEntry entry = GameMappingConfig.getMouseMoveMapping();
-        if (entry == null) {
-            return;
-        }
-
-        float startX = entry.getPhoneX();
-        float startY = entry.getPhoneY();
-        if (startX <= 0 && startY <= 0) {
-            startX = 0.5f;
-            startY = 0.5f;
-        }
-
-        mouseMoveX = startX;
-        mouseMoveY = startY;
-
-        int screenX = (int) (startX * currentVideoWidth);
-        int screenY = (int) (startY * currentVideoHeight);
-
-        ControlService.sendTouchDown(PTR_MOUSE_VIEW, screenX, screenY, ControlMessage.AMOTION_EVENT_BUTTON_PRIMARY);
-        mouseMoveTouching = true;
-        synchronized (GameMappingService.class) {
-            pendingMouseDx = 0f;
-            pendingMouseDy = 0f;
-        }
-
-        // Logger.debug("game mapping: view touch start at (" + startX + "," + startY + ")");
-    }
-
-    private static void mouseMoveStopTouch() {
-        if (!mouseMoveTouching) {
-            return;
-        }
-
-        int screenX = (int) (mouseMoveX * currentVideoWidth);
-        int screenY = (int) (mouseMoveY * currentVideoHeight);
-
-        ControlService.sendTouchUp(PTR_MOUSE_VIEW, screenX, screenY);
-        mouseMoveTouching = false;
-        cancelMouseMoveTimeout();
-        synchronized (GameMappingService.class) {
-            pendingMouseDx = 0f;
-            pendingMouseDy = 0f;
-        }
-
-        // Logger.debug("game mapping: view touch stop");
-    }
-
-    private static void ensureMouseMoveScheduler() {
-        if (mouseMoveScheduler == null || mouseMoveScheduler.isShutdown()) {
-            mouseMoveScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-                Thread t = new Thread(r, "game-mapping-view");
-                t.setDaemon(true);
-                return t;
-            });
-        }
+        // TODO: 重新实现视角移动
     }
 
     private static void ensureActionScheduler() {
@@ -482,131 +523,6 @@ public class GameMappingService {
                 return t;
             });
         }
-    }
-
-    private static void resetMouseMoveTimeout() {
-        cancelMouseMoveTimeout();
-        ensureMouseMoveScheduler();
-        mouseMoveTimeoutFuture = mouseMoveScheduler.schedule(() -> {
-            mouseMoveStopTouch();
-        }, MOUSE_MOVE_TIMEOUT_MS, TimeUnit.MILLISECONDS);
-    }
-
-    private static void ensureMouseMovePump() {
-        ensureMouseMoveScheduler();
-        if (mouseMovePumpFuture != null && !mouseMovePumpFuture.isDone()) {
-            return;
-        }
-        mouseMovePumpFuture = mouseMoveScheduler.scheduleAtFixedRate(() -> {
-            pumpMouseMove();
-        }, 0L, MOUSE_MOVE_PUMP_PERIOD_MS, TimeUnit.MILLISECONDS);
-    }
-
-    private static void pumpMouseMove() {
-        if (!GameMappingConfig.isMappingMode() || !ControlService.isConnected()) {
-            return;
-        }
-        MappingEntry entry = GameMappingConfig.getMouseMoveMapping();
-        if (entry == null || !entry.isEnabled()) {
-            return;
-        }
-
-        long now = System.currentTimeMillis();
-        if (now < ignoreMouseMoveUntilMs) {
-            synchronized (GameMappingService.class) {
-                pendingMouseDx = 0f;
-                pendingMouseDy = 0f;
-            }
-            return;
-        }
-
-        float rawDx;
-        float rawDy;
-        synchronized (GameMappingService.class) {
-            rawDx = pendingMouseDx;
-            rawDy = pendingMouseDy;
-            pendingMouseDx = 0f;
-            pendingMouseDy = 0f;
-        }
-        if (rawDx == 0f && rawDy == 0f) {
-            return;
-        }
-
-        int sensitivity = Math.max(1, entry.getMouseSensitivity());
-        float speedRatio = resolveMouseMoveSpeedRatio(sensitivity);
-
-        if (!mouseMoveTouching) {
-            mouseMoveStartTouch();
-        }
-        resetMouseMoveTimeout();
-
-        rawDx = Math.max(-mouseDeltaMaxPx, Math.min(mouseDeltaMaxPx, rawDx));
-        rawDy = Math.max(-mouseDeltaMaxPx, Math.min(mouseDeltaMaxPx, rawDy));
-        if (Math.abs(rawDx) < mouseDeadzonePx) {
-            rawDx = 0f;
-        }
-        if (Math.abs(rawDy) < mouseDeadzonePx) {
-            rawDy = 0f;
-        }
-        if (rawDx == 0f && rawDy == 0f) {
-            return;
-        }
-
-        applyMouseDeltaWithSubSteps(rawDx, rawDy, speedRatio);
-    }
-
-    private static float resolveMouseMoveSpeedRatio(int sensitivity) {
-        // 数值越小越灵敏（更快），数值越大越迟缓（更慢）
-        // 这里保持“灵敏度数值越大转得越快”的用户认知：
-        // 先把 sensitivity 映射为增益，再转换为 speedRatio（取倒数关系）
-        if (sensitivity <= 1) {
-            return 8.33f; // ~= 1 / 0.12
-        }
-        if (sensitivity <= 10) {
-            float gain = MOUSE_SENSITIVITY_MIN_GAIN + (sensitivity - 1) * 0.08f;
-            return 1f / Math.max(0.08f, gain);
-        }
-        float gain = 0.84f + (sensitivity - 10) * 0.18f;
-        return 1f / Math.max(0.08f, gain);
-    }
-
-    private static void applyMouseDeltaWithSubSteps(float rawDx, float rawDy, float speedRatio) {
-        float totalDxNorm = (rawDx / speedRatio) / currentVideoWidth;
-        float totalDyNorm = (rawDy / speedRatio) / currentVideoHeight;
-        float maxNorm = Math.max(Math.abs(totalDxNorm), Math.abs(totalDyNorm));
-        int steps = (int) Math.ceil(maxNorm / MOUSE_VIEW_STEP_MAX_NORM);
-        steps = Math.max(1, Math.min(MOUSE_VIEW_MAX_STEPS_PER_TICK, steps));
-
-        float stepDx = totalDxNorm / steps;
-        float stepDy = totalDyNorm / steps;
-        for (int i = 0; i < steps; i++) {
-            float nextX = mouseMoveX + stepDx;
-            float nextY = mouseMoveY + stepDy;
-            if (nextX < VIEW_TOUCH_MIN || nextX > VIEW_TOUCH_MAX || nextY < VIEW_TOUCH_MIN || nextY > VIEW_TOUCH_MAX) {
-                // 高速撞边时立即重建触点继续，避免 stop+ignore 导致“转不动”
-                mouseMoveStopTouch();
-                mouseMoveStartTouch();
-                nextX = mouseMoveX + stepDx;
-                nextY = mouseMoveY + stepDy;
-                if (nextX < VIEW_TOUCH_MIN || nextX > VIEW_TOUCH_MAX || nextY < VIEW_TOUCH_MIN || nextY > VIEW_TOUCH_MAX) {
-                    nextX = Math.max(VIEW_TOUCH_MIN, Math.min(VIEW_TOUCH_MAX, nextX));
-                    nextY = Math.max(VIEW_TOUCH_MIN, Math.min(VIEW_TOUCH_MAX, nextY));
-                }
-            }
-
-            mouseMoveX = nextX;
-            mouseMoveY = nextY;
-            int screenX = (int) (mouseMoveX * currentVideoWidth);
-            int screenY = (int) (mouseMoveY * currentVideoHeight);
-            ControlService.sendTouchMove(PTR_MOUSE_VIEW, screenX, screenY);
-        }
-    }
-
-    private static void cancelMouseMoveTimeout() {
-        if (mouseMoveTimeoutFuture != null && !mouseMoveTimeoutFuture.isDone()) {
-            mouseMoveTimeoutFuture.cancel(false);
-        }
-        mouseMoveTimeoutFuture = null;
     }
 
     public static void handleMousePressed(int button) {
