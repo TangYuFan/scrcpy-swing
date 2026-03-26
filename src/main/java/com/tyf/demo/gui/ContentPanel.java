@@ -15,6 +15,7 @@ import java.awt.event.*;
 import java.awt.event.InputMethodEvent;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferByte;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class ContentPanel extends JPanel {
 
@@ -34,8 +35,27 @@ public class ContentPanel extends JPanel {
     private java.awt.Robot gameRobot;
     private volatile boolean gameMouseListening = true;
 
+    /** 记录上一次触摸按下的设备坐标，用于在释放时坐标转换失败时的 fallback */
+    private volatile int lastTouchDownX = -1;
+    private volatile int lastTouchDownY = -1;
+
     /** Windows 下非 null 时使用 LWJGL 绘制视频；失败或未启用时为 null，回退 CPU 绘制 */
     private LwjglVideoCanvas lwjglVideo;
+
+    // -------- 普通模式滑屏兜底：避免 mouseReleased 丢失导致“按住不松”--------
+    private static final AtomicBoolean NORMAL_RELEASE_HOOK_INSTALLED = new AtomicBoolean(false);
+    private volatile boolean normalTouchActive = false;
+    private volatile int normalTouchButton = 0;
+    /** 排查滑屏/抬起：设为 true 时输出 [NORMAL_TOUCH] 日志，确认后可改回 false */
+    private static final boolean NORMAL_TOUCH_DEBUG = true;
+    private static volatile int normalTouchSeq;
+    private static volatile long lastNormalDragLogMs;
+
+    private static void logNormalTouch(String msg) {
+        if (NORMAL_TOUCH_DEBUG) {
+            Logger.info("[NORMAL_TOUCH] " + msg);
+        }
+    }
 
     /**
      * 映射调试：按设备坐标在渲染画布上显示涟漪。
@@ -139,6 +159,7 @@ public class ContentPanel extends JPanel {
         });
 
         attachMouseListeners(mouseHost);
+        installNormalModeGlobalReleaseHookIfNeeded();
 
         addKeyListener(new KeyAdapter() {
             @Override
@@ -192,6 +213,70 @@ public class ContentPanel extends JPanel {
         });
     }
 
+    /**
+     * @desc : 普通模式下，全局兜底 mouseReleased，防止拖动/移出窗口时 release 丢失导致手机端一直按住
+     */
+    private void installNormalModeGlobalReleaseHookIfNeeded() {
+        if (!NORMAL_RELEASE_HOOK_INSTALLED.compareAndSet(false, true)) {
+            return;
+        }
+        Toolkit.getDefaultToolkit().addAWTEventListener(event -> {
+            if (!(event instanceof MouseEvent)) {
+                return;
+            }
+            MouseEvent me = (MouseEvent) event;
+            if (me.getID() != MouseEvent.MOUSE_RELEASED) {
+                return;
+            }
+            // 仅普通模式需要兜底；游戏模式 release 由 GLFW 处理
+            if (GameMappingConfig.isMappingMode()) {
+                return;
+            }
+            if (!normalTouchActive) {
+                return;
+            }
+            Object src = me.getSource();
+            String srcName = src == null ? "null" : src.getClass().getSimpleName();
+            final int seqSnapshot = normalTouchSeq;
+            final int btn = me.getButton();
+            final int sx = me.getXOnScreen();
+            final int sy = me.getYOnScreen();
+            // 全局监听可能在目标组件的 mouseReleased 之前触发；延后一帧再兜底，
+            // 若本地已正常抬起则 normalTouchActive 已为 false，避免重复 sendTouchUp。
+            SwingUtilities.invokeLater(() -> {
+                if (GameMappingConfig.isMappingMode() || !normalTouchActive) {
+                    return;
+                }
+                int x = lastTouchDownX;
+                int y = lastTouchDownY;
+                logNormalTouch("fallbackRelease seq=" + seqSnapshot
+                        + " source=" + srcName
+                        + " button=" + btn
+                        + " screen=" + sx + "," + sy
+                        + " lastDevice=" + x + "," + y
+                        + " normalBtn=" + normalTouchButton);
+                try {
+                    if (x >= 0 && y >= 0) {
+                        if (normalTouchButton == MouseEvent.BUTTON3) {
+                            ControlService.sendTouchUpRight(x, y);
+                            logNormalTouch("fallbackRelease -> sendTouchUpRight device=" + x + "," + y);
+                        } else {
+                            ControlService.sendTouchUp(x, y);
+                            logNormalTouch("fallbackRelease -> sendTouchUp device=" + x + "," + y);
+                        }
+                    } else {
+                        logNormalTouch("fallbackRelease -> skip send (invalid lastDevice), state cleared");
+                    }
+                } finally {
+                    lastTouchDownX = -1;
+                    lastTouchDownY = -1;
+                    normalTouchActive = false;
+                    normalTouchButton = 0;
+                }
+            });
+        }, AWTEvent.MOUSE_EVENT_MASK);
+    }
+
     private static boolean isWindowsOs() {
         return System.getProperty("os.name", "").toLowerCase().contains("win");
     }
@@ -227,21 +312,46 @@ public class ContentPanel extends JPanel {
                 }
 
                 if (frame == null) {
+                    logNormalTouch("mousePressed skip: frame=null");
                     return;
                 }
-                Point p = convertToDevicePoint(e.getPoint());
+                Point p = convertToDevicePointClamped(e.getPoint());
                 if (p == null) {
+                    logNormalTouch("mousePressed skip: convert=null button=" + e.getButton()
+                            + " local=" + e.getX() + "," + e.getY());
                     return;
                 }
                 if (e.getButton() == MouseEvent.BUTTON1) {
-                    ControlService.sendTouchDown((int) p.getX(), (int) p.getY(),
+                    int x = (int) p.getX();
+                    int y = (int) p.getY();
+                    lastTouchDownX = x;
+                    lastTouchDownY = y;
+                    normalTouchActive = true;
+                    normalTouchButton = MouseEvent.BUTTON1;
+                    normalTouchSeq++;
+                    logNormalTouch("down seq=" + normalTouchSeq + " btn=LEFT device=" + x + "," + y
+                            + " local=" + e.getX() + "," + e.getY()
+                            + " host=" + mouseHost.getClass().getSimpleName());
+                    ControlService.sendTouchDown(x, y,
                             ControlMessage.AMOTION_EVENT_BUTTON_PRIMARY);
                     // 点击波纹：由 LWJGL Canvas 在 OpenGL 中绘制
                     if (lwjglVideo != null) {
                         lwjglVideo.addClickRipple(e.getPoint());
                     }
                 } else if (e.getButton() == MouseEvent.BUTTON3) {
-                    ControlService.sendTouchDownRight((int) p.getX(), (int) p.getY());
+                    int x = (int) p.getX();
+                    int y = (int) p.getY();
+                    lastTouchDownX = x;
+                    lastTouchDownY = y;
+                    normalTouchActive = true;
+                    normalTouchButton = MouseEvent.BUTTON3;
+                    normalTouchSeq++;
+                    logNormalTouch("down seq=" + normalTouchSeq + " btn=RIGHT device=" + x + "," + y
+                            + " local=" + e.getX() + "," + e.getY()
+                            + " host=" + mouseHost.getClass().getSimpleName());
+                    ControlService.sendTouchDownRight(x, y);
+                } else {
+                    logNormalTouch("mousePressed ignored button=" + e.getButton());
                 }
             }
 
@@ -257,18 +367,52 @@ public class ContentPanel extends JPanel {
                 }
 
                 if (frame == null) {
+                    logNormalTouch("mouseReleased skip: frame=null seq=" + normalTouchSeq);
                     return;
                 }
-                Point p = convertToDevicePoint(e.getPoint());
+                boolean rawOutsideVideo = !isPointInVideoArea(e.getPoint());
+                Point p = convertToDevicePointClamped(e.getPoint());
+                if (NORMAL_TOUCH_DEBUG && p != null && rawOutsideVideo) {
+                    logNormalTouch("mouseReleased seq=" + normalTouchSeq
+                            + " releaseInLetterbox local=" + e.getX() + "," + e.getY()
+                            + " -> clampedDevice=" + p.x + "," + p.y);
+                }
+                int x, y;
                 if (p == null) {
-                    return;
+                    // 坐标转换失败（鼠标在视频区域外释放），使用上次按下的坐标作为 fallback
+                    x = lastTouchDownX;
+                    y = lastTouchDownY;
+                    if (x < 0 || y < 0) {
+                        logNormalTouch("mouseReleased ABORT seq=" + normalTouchSeq
+                                + " convert=null & no fallback local=" + e.getX() + "," + e.getY()
+                                + " btn=" + e.getButton()
+                                + " (touch may stay down until global hook)");
+                        return;
+                    }
+                    logNormalTouch("mouseReleased seq=" + normalTouchSeq + " useFallbackDevice=" + x + "," + y
+                            + " local=" + e.getX() + "," + e.getY());
+                } else {
+                    x = (int) p.getX();
+                    y = (int) p.getY();
+                    logNormalTouch("mouseReleased seq=" + normalTouchSeq + " path=local device=" + x + "," + y
+                            + " local=" + e.getX() + "," + e.getY() + " btn=" + e.getButton());
                 }
                 if (e.getButton() == MouseEvent.BUTTON1) {
-                    ControlService.sendTouchUp((int) p.getX(), (int) p.getY());
+                    ControlService.sendTouchUp(x, y);
+                    logNormalTouch("localRelease -> sendTouchUp device=" + x + "," + y);
                 } else if (e.getButton() == MouseEvent.BUTTON3) {
-                    ControlService.sendTouchUpRight((int) p.getX(), (int) p.getY());
+                    ControlService.sendTouchUpRight(x, y);
                     ControlService.sendBack();
+                    logNormalTouch("localRelease -> sendTouchUpRight+Back device=" + x + "," + y);
+                } else {
+                    logNormalTouch("mouseReleased no touchUp for button=" + e.getButton()
+                            + " (normalTouchActive was " + normalTouchActive + ")");
                 }
+                // 清除记录的坐标
+                lastTouchDownX = -1;
+                lastTouchDownY = -1;
+                normalTouchActive = false;
+                normalTouchButton = 0;
             }
         });
 
@@ -290,8 +434,32 @@ public class ContentPanel extends JPanel {
                 if (frame == null) {
                     return;
                 }
-                Point p = convertToDevicePoint(e.getPoint());
-                ControlService.sendTouchMove((int) p.getX(), (int) p.getY());
+                Point p = convertToDevicePointClamped(e.getPoint());
+                int x, y;
+                if (p == null) {
+                    // 坐标转换失败（拖出视频区域），使用上次有效坐标
+                    x = lastTouchDownX;
+                    y = lastTouchDownY;
+                    if (x < 0 || y < 0) {
+                        return;
+                    }
+                } else {
+                    x = (int) p.getX();
+                    y = (int) p.getY();
+                    // 更新最后有效坐标
+                    lastTouchDownX = x;
+                    lastTouchDownY = y;
+                }
+                ControlService.sendTouchMove(x, y);
+                if (NORMAL_TOUCH_DEBUG) {
+                    long now = System.currentTimeMillis();
+                    if (now - lastNormalDragLogMs >= 120L) {
+                        lastNormalDragLogMs = now;
+                        logNormalTouch("drag seq=" + normalTouchSeq + " move device=" + x + "," + y
+                                + " local=" + e.getX() + "," + e.getY()
+                                + " pNull=" + (p == null));
+                    }
+                }
             }
         });
 
@@ -326,7 +494,7 @@ public class ContentPanel extends JPanel {
             if (frame == null) {
                 return;
             }
-            Point p = convertToDevicePoint(e.getPoint());
+            Point p = convertToDevicePointClamped(e.getPoint());
             if (p == null) {
                 return;
             }
@@ -347,7 +515,7 @@ public class ContentPanel extends JPanel {
 
     private Point convertToDevicePoint(Point componentPoint) {
         if (frame == null) {
-            return componentPoint;
+            return null;
         }
 
         int iw = frame.getWidth();
@@ -357,7 +525,7 @@ public class ContentPanel extends JPanel {
         int ph = surf.height;
 
         if (pw <= 0 || ph <= 0 || iw <= 0 || ih <= 0) {
-            return componentPoint;
+            return null;
         }
 
         double scale = Math.min(1.0, Math.min((double) pw / iw, (double) ph / ih));
@@ -378,6 +546,25 @@ public class ContentPanel extends JPanel {
         y = Math.max(0, Math.min(y, ih - 1));
 
         return new Point(x, y);
+    }
+
+    /**
+     * @desc : 先将本地坐标钳制到视频可视矩形再映射到设备坐标，避免释放在黑边/外时 convert 为 null 只能依赖 lastTouchDown
+     * @auth : tyf
+     * @date : 2026-03-26
+     */
+    private Point convertToDevicePointClamped(Point componentPoint) {
+        Point p = convertToDevicePoint(componentPoint);
+        if (p != null) {
+            return p;
+        }
+        Rectangle vr = getVideoAreaRect();
+        if (vr == null) {
+            return null;
+        }
+        int lx = Math.max(vr.x, Math.min(vr.x + vr.width - 1, componentPoint.x));
+        int ly = Math.max(vr.y, Math.min(vr.y + vr.height - 1, componentPoint.y));
+        return convertToDevicePoint(new Point(lx, ly));
     }
 
     private boolean isPointInVideoArea(Point componentPoint) {

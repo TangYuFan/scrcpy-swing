@@ -151,8 +151,12 @@ final class ControlChannel {
         
         // 写入并刷新
         out.write(data);
-        // DOWN 必须立即刷出，否则与紧随的 MOVE 同批缓冲时，端上可能先看到错误轨迹（例如先斜向再回正）
-        if (msg.getAction() == ControlMessage.ACTION_DOWN_TOUCH) {
+        // DOWN / UP 必须立即刷出：
+        // - DOWN：与紧随 MOVE 的顺序正确
+        // - UP：若与 MOVE 一起走 flushForTouchLike，在 2ms/未满 6 条时可能长期留在 BufferedOutputStream，
+        //   设备端收不到抬起，表现为“滑屏/按住不松”
+        if (msg.getAction() == ControlMessage.ACTION_DOWN_TOUCH
+                || msg.getAction() == ControlMessage.ACTION_UP_TOUCH) {
             flushNow();
         } else {
             flushForTouchLike();
