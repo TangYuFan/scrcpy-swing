@@ -41,7 +41,7 @@ Scrcpy-Swing 是一个 Android 手机远程控制应用，通过 USB 或者 WIFI
 	<tr>
       <td>声音系统</td>
       <td>接管手机音频到 PC 端。</td>
-      <td>📝 待开发</td>
+      <td>📝 TODO</td>
     </tr>
     <tr>
       <td>设备管理</td>
@@ -56,7 +56,7 @@ Scrcpy-Swing 是一个 Android 手机远程控制应用，通过 USB 或者 WIFI
 	<tr>
       <td>AI-Agent</td>
       <td>接入多模态大模型，在 PC 上绕过手机内部权限通过 Agent 完全控制手机。</td>
-	  <td>📝 待开发</td>
+	  <td>📝 TODO</td>
     </tr>
 	<tr>
       <td>游戏辅助</td>
