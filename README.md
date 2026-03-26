@@ -2,14 +2,14 @@
 
 Scrcpy-Swing 是一个 Android 手机远程控制应用，通过 USB 或者 WIFI 连接，参考 Scrcpy 移植为纯 JAVA-Swing 项目，可执行文件 exe 约 30MB。
 
-### 游戏模式
+### Normal mode
 <table border="1">
   <tr>
     <th><img src="./demo/v2.gif?raw=true" width="540" height="293"></th>
   </tr>
 </table>
 
-### 普通模式
+### Game mode
 <table border="1">
   <tr>
     <th><img src="./demo/v1.gif?raw=true" width="293" height="540"></th>
