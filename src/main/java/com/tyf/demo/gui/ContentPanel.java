@@ -40,13 +40,10 @@ public class ContentPanel extends JPanel {
     /**
      * 映射调试：按设备坐标在渲染画布上显示涟漪。
      * 仅在 LWJGL 渲染路径下生效。
+     * 使用与 paintGL() 一致的坐标计算方式，确保涟漪位置准确。
      */
     public void showMappingRippleAtDevicePoint(int deviceX, int deviceY) {
         if (lwjglVideo == null || frame == null) {
-            return;
-        }
-        Rectangle vr = getVideoAreaRect();
-        if (vr == null) {
             return;
         }
         int iw = frame.getWidth();
@@ -54,10 +51,27 @@ public class ContentPanel extends JPanel {
         if (iw <= 0 || ih <= 0) {
             return;
         }
-        // 与 convertToDevicePoint 反向：device -> local
-        double scale = (double) vr.width / (double) iw;
-        int lx = (int) Math.round(vr.x + deviceX * scale);
-        int ly = (int) Math.round(vr.y + deviceY * scale);
+        Dimension surf = resolveRenderSurfaceSize();
+        int canvasW = surf.width;
+        int canvasH = surf.height;
+        if (canvasW <= 0 || canvasH <= 0) {
+            return;
+        }
+        double videoAspect = (double) iw / (double) ih;
+        double viewAspect = (double) canvasW / (double) canvasH;
+        double drawW, drawH;
+        if (videoAspect > viewAspect) {
+            drawW = canvasW;
+            drawH = canvasW / videoAspect;
+        } else {
+            drawH = canvasH;
+            drawW = canvasH * videoAspect;
+        }
+        double x0 = (canvasW - drawW) / 2.0;
+        double y0 = (canvasH - drawH) / 2.0;
+        double scale = drawW / (double) iw;
+        int lx = (int) Math.round(x0 + deviceX * scale);
+        int ly = (int) Math.round(y0 + deviceY * scale);
         lwjglVideo.addClickRipple(new Point(lx, ly));
     }
 
