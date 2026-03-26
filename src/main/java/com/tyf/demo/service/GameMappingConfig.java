@@ -334,10 +334,9 @@ public class GameMappingConfig {
         
         if (!mode) {
             GameMappingService.resetState();
-            try {
-                GlfwInputCaptureService.stop();
-            } catch (Throwable ignored) {
-            }
+            GlfwInputCaptureService.stop();
+            // 退出游戏模式时，将鼠标移动到视频区域中心
+            GlfwInputCaptureService.moveCursorToCenter();
         } else {
             java.awt.EventQueue.invokeLater(() -> {
                 if (MainFrame.getMainFrame() != null && MainFrame.getMainFrame().getContentPanel() != null) {

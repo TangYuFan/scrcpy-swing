@@ -173,13 +173,21 @@ public class ContentPanel extends JPanel {
                                 + " focus=" + hasFocus()
                                 + " host=" + (lwjglVideo != null ? "LWJGL" : "CPU"));
                     }
-                    if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
+                    if (e.getKeyCode() == KeyEvent.VK_TAB) {
                         GameMappingConfig.setMappingMode(false);
                         ToolWindow.updateMappingButtonIfExists(false);
                         e.consume();
                         return;
                     }
                     GameMappingService.handleKeyPressed(e.getKeyCode());
+                    e.consume();
+                    return;
+                }
+
+                // 普通模式：ESC 切换到游戏模式
+                if (e.getKeyCode() == KeyEvent.VK_TAB) {
+                    GameMappingConfig.setMappingMode(true);
+                    ToolWindow.updateMappingButtonIfExists(true);
                     e.consume();
                     return;
                 }
@@ -793,7 +801,7 @@ public class ContentPanel extends JPanel {
         }
 
         switch (keyCode) {
-            case KeyEvent.VK_ESCAPE:
+            case KeyEvent.VK_TAB:
                 ControlService.sendBack();
                 e.consume();
                 return;

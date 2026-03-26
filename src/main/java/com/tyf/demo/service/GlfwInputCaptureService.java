@@ -50,6 +50,50 @@ public class GlfwInputCaptureService {
         }
     }
 
+    public static void moveCursorToCenter() {
+        if (window == 0L) {
+            return;
+        }
+        try {
+            Rectangle r = null;
+            if (MainPanel.getContentPanel() != null) {
+                r = MainPanel.getContentPanel().getVideoSurfaceBoundsOnScreen();
+            }
+            if (r != null && r.width > 0 && r.height > 0) {
+                final int targetX = r.x + r.width / 2;
+                final int targetY = r.y + r.height / 2;
+                new Thread(() -> {
+                    try {
+                        Thread.sleep(50);
+                        java.awt.Robot robot = new java.awt.Robot();
+                        robot.mouseMove(targetX, targetY);
+                    } catch (Exception ignored) {
+                    }
+                }).start();
+                return;
+            }
+            int[] x = new int[1];
+            int[] y = new int[1];
+            int[] w = new int[1];
+            int[] h = new int[1];
+            glfwGetWindowPos(window, x, y);
+            glfwGetWindowSize(window, w, h);
+            if (w[0] > 0 && h[0] > 0) {
+                final int targetX = x[0] + w[0] / 2;
+                final int targetY = y[0] + h[0] / 2;
+                new Thread(() -> {
+                    try {
+                        Thread.sleep(50);
+                        java.awt.Robot robot = new java.awt.Robot();
+                        robot.mouseMove(targetX, targetY);
+                    } catch (Exception ignored) {
+                    }
+                }).start();
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
     private static void runLoop() {
         GLFWErrorCallback.createPrint(System.err).set();
         if (!glfwInit()) {
@@ -109,7 +153,7 @@ public class GlfwInputCaptureService {
                     return;
                 }
                 // ESC：直接退出映射模式（并在 setMappingMode(false) 里 stop 捕获窗口）
-                if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
+                if (key == GLFW_KEY_TAB && action == GLFW_PRESS) {
                     GameMappingConfig.setMappingMode(false);
                     // 双保险：立刻请求关闭捕获窗口
                     GlfwInputCaptureService.stop();

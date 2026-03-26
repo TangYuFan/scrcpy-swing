@@ -34,8 +34,8 @@ public class BackpackMapping extends AbstractBuiltinMapping {
         e.setType(MappingType.CLICK);
         e.setTriggerType(TriggerType.KEYBOARD);
         e.setMousePressMode(MousePressMode.NONE);
-        e.setKeyCode(KeyEvent.VK_TAB);
-        e.setKeyName("TAB");
+        e.setKeyCode(KeyEvent.VK_CONTROL);
+        e.setKeyName("CTRL");
         e.setPhoneX(0.06f);
         e.setPhoneY(0.28f);
         e.setEnabled(true);

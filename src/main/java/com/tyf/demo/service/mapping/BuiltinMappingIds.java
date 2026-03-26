@@ -32,4 +32,7 @@ public final class BuiltinMappingIds {
     public static final String CUSTOM_3 = "fps_custom_3";
     public static final String CUSTOM_4 = "fps_custom_4";
     public static final String CUSTOM_5 = "fps_custom_5";
+    public static final String MAP = "fps_map";
+    public static final String ITEM_1 = "fps_item_1";
+    public static final String ITEM_2 = "fps_item_2";
 }

@@ -76,6 +76,8 @@ public class GlfwKeyMapper {
             case GLFW_KEY_LEFT_CONTROL:
             case GLFW_KEY_RIGHT_CONTROL:
                 return KeyEvent.VK_CONTROL;
+            case GLFW_KEY_TAB:
+                return KeyEvent.VK_TAB;
             case GLFW_KEY_ESCAPE:
                 return KeyEvent.VK_ESCAPE;
             default:
