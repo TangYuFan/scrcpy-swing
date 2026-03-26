@@ -4,10 +4,9 @@ Scrcpy-Swing 是一个 Android 手机远程控制应用，通过 USB 或者 WIFI
 
 <table border="1">
   <tr>
-    <th><img src="demo/img4.png" width="150" height="280"></th>
-    <th><img src="demo/img3.png" width="150" height="280"></th>
-    <th><img src="demo/img1.png" width="200" height="120"></th>
-    <th><img src="demo/img2.png" width="200" height="120"></th>
+    <th><img src="./demo/v1.gif?raw=true" width="150" height="280"></th>
+    <th><img src="./demo/v2.gif?raw=true" width="150" height="280"></th>
+    <th><img src="./demo/v3.png?raw=true" width="200" height="120"></th>
   </tr>
 </table>
 
