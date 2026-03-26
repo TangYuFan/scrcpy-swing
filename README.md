@@ -51,7 +51,7 @@ Scrcpy-Swing 是一个 Android 手机远程控制应用，通过 USB 或者 WIFI
     <tr>
       <td>日志系统</td>
       <td>提供 PC 和 Android 双端日志，便于调试。</td>
-	  <td>✅ 100%</td>
+	  <td>✅ 100%</td>             
     </tr>
 	<tr>
       <td>AI-Agent</td>
