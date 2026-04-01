@@ -70,7 +70,4 @@ Scrcpy-Swing 是一个 Android 手机远程控制应用，通过 USB 或者 WIFI
 <hr style="height:1px; border:none; background-color:#ccc; margin:20px 0;" />
 
 
-## FPS Game
-
-针对 fps 游戏需要将鼠标移动映射为屏幕拖动实现视角转换，同时还需要在某些功能界面禁用视角移动并释放鼠标，所以目前已经映射的键位如下：
 
